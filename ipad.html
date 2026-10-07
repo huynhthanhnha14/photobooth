@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>📱 iPad Controller - Photobooth</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="ipad-layout">
+
+  <!-- ══════════ SCREEN 1: KẾT NỐI ══════════ -->
+  <div id="connect-screen" class="connect-screen">
+    <div class="connect-box">
+      <div class="connect-logo">📱</div>
+      <h1>iPad Controller</h1>
+      <p class="connect-desc">Nhập mã phòng hiển thị trên laptop</p>
+
+      <input type="text" id="room-input" class="room-input"
+             placeholder="A1B2C3" maxlength="6" autocomplete="off" />
+
+      <button id="btn-connect" class="btn-main" style="width:100%; justify-content:center;">
+        <span>🔌 Kết nối</span>
+      </button>
+
+      <p id="connect-status" class="connect-status">Chưa kết nối</p>
+
+      <p class="connect-hint">
+        💡 Trên laptop: mở <code>index.html</code> → nhấn <code>📱 iPad</code>
+      </p>
+    </div>
+  </div>
+
+  <!-- ══════════ SCREEN 2: ĐIỀU KHIỂN ══════════ -->
+  <div id="main-screen" class="main-screen" style="display:none;">
+
+    <header class="ipad-header">
+      <div class="ipad-header-title">📱 iPad Controller</div>
+      <div class="ipad-header-badge" id="room-badge">—</div>
+      <button id="btn-disconnect" class="ipad-btn-small">✕</button>
+    </header>
+
+    <!-- Progress -->
+    <div class="ipad-progress">
+      <div class="progress-step" data-step="1"><span class="progress-num">1</span><span class="progress-label">Khung</span></div>
+      <div class="progress-line"></div>
+      <div class="progress-step" data-step="2"><span class="progress-num">2</span><span class="progress-label">Chụp</span></div>
+      <div class="progress-line"></div>
+      <div class="progress-step" data-step="3"><span class="progress-num">3</span><span class="progress-label">Chọn</span></div>
+      <div class="progress-line"></div>
+      <div class="progress-step" data-step="4"><span class="progress-num">4</span><span class="progress-label">Xem</span></div>
+      <div class="progress-line"></div>
+      <div class="progress-step" data-step="5"><span class="progress-num">5</span><span class="progress-label">QR</span></div>
+    </div>
+
+    <!-- Main content: 2 columns -->
+    <div class="ipad-main">
+
+      <!-- LEFT: Video stream từ laptop -->
+      <div class="ipad-left">
+        <div class="ipad-video-wrap">
+          <img id="remote-video" class="ipad-video" alt="Camera từ laptop" />
+          <div class="ipad-video-badge">🔴 Live từ laptop</div>
+        </div>
+
+        <!-- Info khung đang chọn -->
+        <div class="ipad-info-box">
+          <div class="info-item highlight">
+            <span class="info-label">Khung đang chọn</span>
+            <span class="info-value" id="selected-frame-name">—</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Thông tin</span>
+            <span class="info-value" id="selected-frame-meta">—</span>
+          </div>
+        </div>
+
+        <!-- Nút chụp -->
+        <div class="ipad-capture-info" id="panel-capture" style="display:none;">
+          <div class="ipad-capture-progress">
+            <span class="info-label">Tiến độ</span>
+            <span class="info-value" id="capture-progress">0 / 0</span>
+          </div>
+          <button id="ipad-btn-capture" class="btn-main" style="width:100%; justify-content:center; font-size:16px; padding:16px;">
+            📸 <span>BẮT ĐẦU CHỤP</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT: Frames list / Photo pick / Final -->
+      <div class="ipad-right">
+
+        <!-- PANEL SELECT -->
+        <div id="panel-select" class="ipad-panel">
+          <h3 class="ipad-panel-title">🎨 Chọn khung</h3>
+          <div id="ipad-frame-list" class="ipad-frame-list">
+            <p class="loading">Đang chờ laptop...</p>
+          </div>
+          <button id="ipad-btn-continue" class="btn-main" style="width:100%; justify-content:center; margin-top:10px;">
+            Vào chụp ảnh →
+          </button>
+        </div>
+
+        <!-- PANEL PICK -->
+        <div id="panel-pick" class="ipad-panel" style="display:none;">
+          <h3 class="ipad-panel-title">✅ Chọn ảnh ưng ý</h3>
+          <div id="ipad-pick-grid" class="ipad-pick-grid"></div>
+          <button id="ipad-btn-picked-continue" class="btn-main" style="width:100%; justify-content:center; margin-top:10px;">
+            Tiếp tục →
+          </button>
+        </div>
+
+        <!-- PANEL DECORATE -->
+        <div id="panel-decorate" class="ipad-panel" style="display:none;">
+          <h3 class="ipad-panel-title">✨ Xem trước</h3>
+          <p class="ipad-hint">Chọn hashtag trên iPad, laptop sẽ tự chèn</p>
+          <div id="ipad-hashtag-list" class="ipad-hashtag-list"></div>
+          <button id="ipad-btn-finalize" class="btn-main" style="width:100%; justify-content:center; margin-top:10px;">
+            📱 Tạo QR
+          </button>
+        </div>
+
+        <!-- PANEL RESULT -->
+        <div id="panel-result" class="ipad-panel" style="display:none;">
+          <h3 class="ipad-panel-title">🎉 Hoàn tất</h3>
+          <div id="ipad-final-photo" class="ipad-final-photo"></div>
+          <a id="ipad-download-btn" download target="_blank" rel="noreferrer" style="display:block; margin-top:10px; text-decoration:none;">
+            <button class="btn-main" style="width:100%; justify-content:center;">⬇️ Tải ảnh</button>
+          </a>
+          <button id="ipad-btn-restart" class="btn-secondary" style="width:100%; justify-content:center; margin-top:6px;">
+            🔄 Chụp lại
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- ⭐ iPad cần Supabase + RealtimeSync + Controller -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/realtime-sync.js"></script>
+  <script src="js/ipad-controller.js"></script>
+</body>
+</html>

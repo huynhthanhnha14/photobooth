@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚙️ Quản trị - KTCN x CNTT Photobooth</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="admin-layout">
+  <header class="app-header">
+    <div class="app-logo">
+      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1e40af"/>
+            <stop offset="100%" stop-color="#0a1628"/>
+          </linearGradient>
+          <linearGradient id="lg2" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fbbf24"/>
+            <stop offset="100%" stop-color="#f59e0b"/>
+          </linearGradient>
+        </defs>
+        <polygon points="100,10 175,55 175,145 100,190 25,145 25,55" fill="url(#lg1)" stroke="url(#lg2)" stroke-width="5"/>
+        <path d="M 75 60 L 60 105 L 85 105 L 75 140 L 105 95 L 80 95 Z" fill="url(#lg2)"/>
+        <text x="130" y="115" font-family="monospace" font-size="34" font-weight="900" fill="#38bdf8" text-anchor="middle">&lt;/&gt;</text>
+      </svg>
+    </div>
+    <div class="app-title">
+      <div class="app-title-line1">KTCN × CNTT</div>
+      <div class="app-title-line2">Quản trị</div>
+    </div>
+    <nav class="app-nav">
+      <a href="index.html">📷</a>
+      <a href="admin.html" class="active">⚙️</a>
+    </nav>
+  </header>
+
+  <main class="admin-main">
+    <div class="admin-grid">
+
+      <!-- ═══════ CỘT 1: FORM ═══════ -->
+      <section class="admin-panel admin-panel-scroll">
+        <h2 class="panel-title">➕ Thêm khung</h2>
+        <div class="admin-form">
+
+          <label class="admin-label">Tên khung</label>
+          <input type="text" id="frame-name" placeholder="VD: KTCN" />
+
+          <label class="admin-label">1️⃣ Ảnh khung nền (PNG)</label>
+          <label class="file-picker-compact">
+            <input type="file" id="frame-file" accept="image/png,image/jpeg,image/webp" />
+            <span id="file-label">📁 Chọn file</span>
+          </label>
+
+          <label class="admin-label" style="color: var(--tech-gold);">
+            2️⃣ PNG chữ (đè lên camera)
+          </label>
+          <label class="file-picker-compact">
+            <input type="file" id="frame-text-file" accept="image/png" />
+            <span id="text-file-label">📁 Chọn PNG chữ</span>
+          </label>
+
+          <div class="form-row-3">
+            <div>
+              <label class="admin-label">Layout</label>
+              <select id="frame-layout">
+                <option value="auto" selected>🤖 Tự động</option>
+                <option value="center-box">⭐ Giữa</option>
+                <option value="circle-center">⭕ Tròn giữa</option>
+                <option value="circle-large">⭕ Tròn lớn</option>
+                <option value="circle-small">⭕ Tròn nhỏ</option>
+                <option value="ktcn-2slot">KTCN 2</option>
+                <option value="ktcn-4slot">KTCN 4</option>
+                <option value="grid-2x2">2x2</option>
+                <option value="grid-2x3">2x3</option>
+                <option value="grid-2x4">2x4</option>
+                <option value="grid-3x3">3x3</option>
+                <option value="vertical-strip">Dọc</option>
+                <option value="single">1 ô</option>
+              </select>
+            </div>
+            <div>
+              <label class="admin-label">Số ô</label>
+              <input type="number" id="frame-photo-count" value="3" min="1" max="12" />
+            </div>
+            <div>
+              <label class="admin-label">Số shot</label>
+              <input type="number" id="frame-capture-count" value="3" min="1" max="20" />
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div>
+              <label class="admin-label">🎨 Shape</label>
+              <select id="frame-shape-type">
+                <option value="rect" selected>▢ Chữ nhật</option>
+                <option value="heart">❤️ Tim</option>
+                <option value="star">⭐ Sao</option>
+                <option value="circle">⭕ Tròn</option>
+                <option value="hexagon">⬡ Lục giác</option>
+                <option value="diamond">◆ Kim cương</option>
+                <option value="triangle">▲ Tam giác</option>
+                <option value="text">🔤 Chữ</option>
+              </select>
+            </div>
+            <div>
+              <label class="admin-label">🎭 Pose</label>
+              <select id="frame-pose">
+                <option value="">🚫 Không</option>
+                <option value="peace">✌️ Chữ V</option>
+                <option value="heart-hands">❤️ Tay tim</option>
+                <option value="star-pose">⭐ Sao</option>
+                <option value="wave">👋 Vẫy</option>
+                <option value="cool">😎 Ngầu</option>
+                <option value="jump">🤸 Nhảy</option>
+                <option value="bow">🙇 Cúi</option>
+                <option value="couple-heart">💑 Đôi tim</option>
+                <option value="besties">👯 Bạn</option>
+                <option value="group-3">👨‍👩‍👦 Nhóm</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="text-shape-row" style="display: none;">
+            <label class="admin-label">Nội dung chữ</label>
+            <input type="text" id="frame-shape-text" placeholder="VD: LOVE" maxlength="8" />
+          </div>
+
+          <div class="form-row-2">
+            <div>
+              <label class="admin-label">🏷️ Hashtag</label>
+              <select id="frame-hashtag-preset">
+                <option value="bottom-center" selected>⬇️ Dưới</option>
+                <option value="bottom-left">↙️ Dưới trái</option>
+                <option value="bottom-right">↘️ Dưới phải</option>
+                <option value="top-center">⬆️ Trên</option>
+                <option value="top-left">↖️ Trên trái</option>
+                <option value="top-right">↗️ Trên phải</option>
+                <option value="center">⏺️ Giữa</option>
+                <option value="custom">🎯 Custom</option>
+              </select>
+            </div>
+            <div>
+              <label class="admin-label">Cỡ / Màu</label>
+              <div style="display:flex; gap:4px;">
+                <input type="number" id="frame-hashtag-size" value="32" min="8" max="200" style="flex:1;" />
+                <input type="color" id="frame-hashtag-color" value="#fbbf24" style="width:38px;" />
+              </div>
+            </div>
+          </div>
+
+          <div id="custom-hashtag-pos" style="display: none; grid-template-columns: 1fr 1fr; gap: 4px;">
+            <input type="number" id="frame-hashtag-x" value="0.5" min="0" max="1" step="0.01" placeholder="X" />
+            <input type="number" id="frame-hashtag-y" value="0.92" min="0" max="1" step="0.01" placeholder="Y" />
+          </div>
+
+          <button id="btn-add-frame" class="btn-main btn-full">
+            <span>➕ Thêm khung</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ═══════ CỘT 2: DANH SÁCH ═══════ -->
+      <section class="admin-panel admin-panel-scroll">
+        <h2 class="panel-title">🖼️ Danh sách khung</h2>
+        <div id="admin-frame-list" class="admin-frame-list">
+          <p class="loading">Đang tải...</p>
+        </div>
+      </section>
+
+      <!-- ═══════ CỘT 3: HASHTAG ═══════ -->
+      <section class="admin-panel admin-panel-scroll">
+        <h2 class="panel-title">#️⃣ Hashtag</h2>
+        <div class="hashtag-form-compact">
+          <input type="text" id="hashtag-input" placeholder="hashtag" />
+          <button id="btn-add-hashtag" class="btn-small">Thêm</button>
+        </div>
+        <div id="admin-hashtag-list" class="hashtag-list-compact"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/image-compressor.js"></script>
+  <script src="js/admin.js"></script>
+  <script>
+    document.getElementById('frame-hashtag-preset').addEventListener('change', (e) => {
+      document.getElementById('custom-hashtag-pos').style.display =
+        e.target.value === 'custom' ? 'grid' : 'none';
+    });
+    document.getElementById('frame-shape-type').addEventListener('change', (e) => {
+      document.getElementById('text-shape-row').style.display =
+        e.target.value === 'text' ? 'block' : 'none';
+    });
+  </script>
+</body>
+</html>
