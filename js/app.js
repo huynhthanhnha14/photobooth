@@ -19,6 +19,7 @@ let _rtRoomId = null;
 let _rtConnected = false;
 let _rtStreamTimer = null;
 let _rtHeartbeatTimer = null;
+  let _webrtcStarted = false;
 
   const $ = (sel) => document.querySelector(sel);
   const steps = {
@@ -1253,10 +1254,25 @@ function initRealtimeSync() {
 }
 
 function setupLaptopRealtime() {
-  RealtimeSync.on('onConnect', () => {
-    console.log('[Laptop] Đã kết nối phòng:', _rtRoomId);
-    broadcastFullState();
-  });
+      RealtimeSync.on('onConnect', () => {
+      console.log('[iPad] Đã kết nối phòng:', state.roomId);
+      state.connected = true;
+      RealtimeSync.sendPair({ role: 'ipad', joinedAt: Date.now() });
+      showMainUI();
+      toast('Đã kết nối!', 'success');
+
+      // ⭐ Khởi động WebRTC receiver
+      if (!_webrtcStarted) {
+        _webrtcStarted = true;
+        setTimeout(() => {
+          const videoEl = document.getElementById('remote-video');
+          if (videoEl) {
+            WebRTCStream.initReceiver(videoEl, state.roomId);
+            console.log('[iPad] Đã khởi động WebRTC receiver');
+          }
+        }, 500);
+      }
+    });
 
   RealtimeSync.on('onState', () => {
     // Laptop không nhận state từ iPad
@@ -1285,7 +1301,7 @@ function setupLaptopRealtime() {
   });
 
   RealtimeSync.connect(_rtRoomId, 'laptop');
-  startStreamingToIpad();
+  //startStreamingToIpad();
 }
 
 function handleIpadCommand(cmd) {

@@ -58,9 +58,9 @@
       <!-- LEFT: Video stream từ laptop -->
       <div class="ipad-left">
         <div class="ipad-video-wrap">
-          <img id="remote-video" class="ipad-video" alt="Camera từ laptop" />
-          <div class="ipad-video-badge">🔴 Live từ laptop</div>
-        </div>
+  <video id="remote-video" class="ipad-video" autoplay playsinline muted></video>
+  <!-- <div class="ipad-video-badge">🔴 Live từ laptop</div> -->
+</div>
 
         <!-- Info khung đang chọn -->
         <div class="ipad-info-box">
@@ -141,7 +141,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
-  <script src="js/realtime-sync.js"></script>
+    <script src="js/realtime-sync.js"></script>
+  <script src="js/webrtc-stream.js"></script>
   <script src="js/ipad-controller.js"></script>
 </body>
 </html>

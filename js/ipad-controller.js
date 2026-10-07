@@ -17,6 +17,9 @@
 
   let _lastVideoTime = 0;
   let _reconnectTimer = null;
+    let _webrtcStarted = false;
+  let _videoFps = 0;
+  let _videoLastTime = 0;
 
   function toast(msg, type = 'info') {
     const el = $('#toast');
@@ -55,12 +58,50 @@
       handleVideoFrame(payload);
     });
 
-    RealtimeSync.on('onPair', (payload) => {
-      console.log('[iPad] Pair event:', payload);
-      if (payload.role === 'laptop-left') {
-        state.connected = false;
-        toast('Laptop đã ngắt kết nối', 'error');
-        showConnectUI();
+        RealtimeSync.on('onPair', (payload) => {
+      if (payload.role === 'ipad' || payload.role === 'ipad-alive') {
+        if (!_rtConnected) {
+          _rtConnected = true;
+          console.log('[Laptop] iPad đã kết nối');
+          const btn = document.getElementById('btn-show-ipad-pair');
+          if (btn) btn.classList.add('connected');
+          const status = document.getElementById('ipad-pair-status');
+          if (status) {
+            status.classList.add('connected');
+            status.textContent = '✅ iPad đã kết nối';
+          }
+        }
+
+        // ⭐ Broadcast frames NGAY khi iPad pair
+        setTimeout(() => {
+          broadcastFullState();
+          // Gửi lại frames + hashtags sau 1s (đảm bảo iPad đã ready)
+          setTimeout(() => {
+            RealtimeSync.sendState({
+              frames: state.frames.map((f) => ({
+                id: f.id,
+                name: f.name,
+                image_url: f.image_url,
+                photo_count: f.photo_count,
+                capture_count: f.capture_count,
+              })),
+              hashtags: state.hashtags.map((h) => ({ tag: h.tag })),
+              selectedTags: state.selectedTags,
+            });
+          }, 1000);
+        }, 300);
+
+        // ⭐ Khởi động WebRTC stream nếu chưa
+        if (!_webrtcStarted && payload.role === 'ipad') {
+          _webrtcStarted = true;
+          setTimeout(() => {
+            const videoEl = document.getElementById('preview-video') || document.getElementById('video');
+            if (videoEl && videoEl.srcObject) {
+              WebRTCStream.initSender(videoEl, _rtRoomId);
+              console.log('[Laptop] Đã khởi động WebRTC sender');
+            }
+          }, 800);
+        }
       }
     });
 
@@ -74,75 +115,77 @@
   // XỬ LÝ VIDEO FRAME
   // ============================================
   function handleVideoFrame(payload) {
-    if (!payload || !payload.data) return;
+    // if (!payload || !payload.data) return;
 
-    const img = $('#remote-video');
-    if (!img) return;
+    // const img = $('#remote-video');
+    // if (!img) return;
 
-    img.src = payload.data;
-    _lastVideoTime = Date.now();
+    // img.src = payload.data;
+    // _lastVideoTime = Date.now();
 
-    // FPS
-    if (!handleVideoFrame._lastFps) handleVideoFrame._lastFps = Date.now();
-    if (Date.now() - handleVideoFrame._lastFps > 1000) {
-      handleVideoFrame._lastFps = Date.now();
-    }
+    // // FPS
+    // if (!handleVideoFrame._lastFps) handleVideoFrame._lastFps = Date.now();
+    // if (Date.now() - handleVideoFrame._lastFps > 1000) {
+    //   handleVideoFrame._lastFps = Date.now();
+    // }
   }
 
   // ============================================
   // XỬ LÝ STATE TỪ LAPTOP
   // ============================================
-  function handleStateUpdate(payload) {
+    function handleStateUpdate(payload) {
     if (!payload) return;
     console.log('[iPad] State:', payload);
 
-    // Cập nhật step
+    // Step
     if (payload.step) {
       state.step = payload.step;
       updateStepUI(payload.step);
     }
 
-    // Cập nhật khung đã chọn
+    // Frames — quan trọng: render ngay
+    if (payload.frames && Array.isArray(payload.frames) && payload.frames.length > 0) {
+      state.frames = payload.frames;
+      renderFrameList(payload.frames);
+    }
+
+    // Khung đã chọn
     if (payload.selectedFrame) {
       state.selectedFrame = payload.selectedFrame;
-      $('#selected-frame-name').textContent = payload.selectedFrame.name || '—';
-      $('#selected-frame-meta').textContent =
-        `${payload.selectedFrame.photo_count || 1} ô · chụp ${payload.selectedFrame.capture_count || 3} tấm`;
+      const nameEl = $('#selected-frame-name');
+      if (nameEl) nameEl.textContent = payload.selectedFrame.name || '—';
+      const metaEl = $('#selected-frame-meta');
+      if (metaEl) {
+        metaEl.textContent = `${payload.selectedFrame.photo_count || 1} ô · chụp ${payload.selectedFrame.capture_count || 3} tấm`;
+      }
 
-      // Highlight khung đang chọn
       document.querySelectorAll('.frame-item-ipad').forEach((el) => {
         el.classList.toggle('selected', el.dataset.id === payload.selectedFrame.id);
       });
     }
 
-    // Cập nhật danh sách khung
-    if (payload.frames && Array.isArray(payload.frames)) {
-      state.frames = payload.frames;
-      renderFrameList(payload.frames);
+    // Hashtags
+    if (payload.hashtags && Array.isArray(payload.hashtags)) {
+      renderHashtagList(payload.hashtags);
     }
 
-    // Tiến độ chụp
-    if (payload.captureProgress != null && payload.captureTotal != null) {
-      $('#capture-progress').textContent = `${payload.captureProgress} / ${payload.captureTotal}`;
-    }
-
-    // Ảnh chụp được
+    // Photos pick
     if (payload.allPhotos && Array.isArray(payload.allPhotos)) {
       state.photos = payload.allPhotos;
       renderPhotoPick(payload.allPhotos, payload.needPick || 1);
     }
 
-    // Hashtag
-    if (payload.hashtags && Array.isArray(payload.hashtags)) {
-      renderHashtagList(payload.hashtags);
+    // Progress
+    if (payload.captureProgress != null && payload.captureTotal != null) {
+      const el = $('#capture-progress');
+      if (el) el.textContent = `${payload.captureProgress} / ${payload.captureTotal}`;
     }
 
-    // Ảnh cuối
+    // Final result
     if (payload.finalPhotoUrl) {
       showFinalResult(payload.finalPhotoUrl, payload.qrUrl);
     }
   }
-
   // ============================================
   // RENDER UI
   // ============================================
