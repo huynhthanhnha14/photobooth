@@ -1,5 +1,5 @@
 // ============================================
-// iPAD CONTROLLER — Nhận video + gửi lệnh
+// iPAD CONTROLLER — Nhận video + Gửi lệnh
 // ============================================
 (function () {
   const $ = (sel) => document.querySelector(sel);
@@ -13,13 +13,12 @@
     step: 'select',
     photos: [],
     pickedIndices: [],
+    frameCount: 0,
   };
 
-  let _lastVideoTime = 0;
   let _reconnectTimer = null;
-    let _webrtcStarted = false;
-  let _videoFps = 0;
-  let _videoLastTime = 0;
+  let _videoFpsStart = 0;
+  let _videoFpsCount = 0;
 
   function toast(msg, type = 'info') {
     const el = $('#toast');
@@ -41,115 +40,87 @@
 
     state.roomId = roomId.toUpperCase();
 
-    // Đăng ký handlers
     RealtimeSync.on('onConnect', () => {
       console.log('[iPad] Đã kết nối phòng:', state.roomId);
       state.connected = true;
       RealtimeSync.sendPair({ role: 'ipad', joinedAt: Date.now() });
       showMainUI();
       toast('Đã kết nối!', 'success');
-    });
 
-    RealtimeSync.on('onState', (payload) => {
-      handleStateUpdate(payload);
-    });
-
-    RealtimeSync.on('onVideo', (payload) => {
-      handleVideoFrame(payload);
-    });
-
-        RealtimeSync.on('onPair', (payload) => {
-      if (payload.role === 'ipad' || payload.role === 'ipad-alive') {
-        if (!_rtConnected) {
-          _rtConnected = true;
-          console.log('[Laptop] iPad đã kết nối');
-          const btn = document.getElementById('btn-show-ipad-pair');
-          if (btn) btn.classList.add('connected');
-          const status = document.getElementById('ipad-pair-status');
-          if (status) {
-            status.classList.add('connected');
-            status.textContent = '✅ iPad đã kết nối';
-          }
+      if (_reconnectTimer) clearInterval(_reconnectTimer);
+      _reconnectTimer = setInterval(() => {
+        if (state.connected) {
+          RealtimeSync.sendPair({ role: 'ipad-alive', t: Date.now() });
         }
+      }, 3000);
+    });
 
-        // ⭐ Broadcast frames NGAY khi iPad pair
-        setTimeout(() => {
-          broadcastFullState();
-          // Gửi lại frames + hashtags sau 1s (đảm bảo iPad đã ready)
-          setTimeout(() => {
-            RealtimeSync.sendState({
-              frames: state.frames.map((f) => ({
-                id: f.id,
-                name: f.name,
-                image_url: f.image_url,
-                photo_count: f.photo_count,
-                capture_count: f.capture_count,
-              })),
-              hashtags: state.hashtags.map((h) => ({ tag: h.tag })),
-              selectedTags: state.selectedTags,
-            });
-          }, 1000);
-        }, 300);
+    RealtimeSync.on('onState', (payload) => handleStateUpdate(payload));
+    RealtimeSync.on('onVideo', (payload) => handleVideoFrame(payload));
 
-        // ⭐ Khởi động WebRTC stream nếu chưa
-        if (!_webrtcStarted && payload.role === 'ipad') {
-          _webrtcStarted = true;
-          setTimeout(() => {
-            const videoEl = document.getElementById('preview-video') || document.getElementById('video');
-            if (videoEl && videoEl.srcObject) {
-              WebRTCStream.initSender(videoEl, _rtRoomId);
-              console.log('[Laptop] Đã khởi động WebRTC sender');
-            }
-          }, 800);
-        }
+    RealtimeSync.on('onPair', (payload) => {
+      if (payload.role === 'laptop-left') {
+        state.connected = false;
+        toast('Laptop đã ngắt kết nối', 'error');
+        showConnectUI();
       }
     });
 
     RealtimeSync.connect(state.roomId, 'ipad');
 
-    // Hiện loading
-    $('#connect-status').textContent = 'Đang kết nối...';
+    const status = $('#connect-status');
+    if (status) status.textContent = 'Đang kết nối...';
   }
 
   // ============================================
-  // XỬ LÝ VIDEO FRAME
+  // VIDEO FRAME
   // ============================================
   function handleVideoFrame(payload) {
-    // if (!payload || !payload.data) return;
+    if (!payload || !payload.data) return;
 
-    // const img = $('#remote-video');
-    // if (!img) return;
+    const img = document.getElementById('remote-video-img');
+    if (!img) return;
 
-    // img.src = payload.data;
-    // _lastVideoTime = Date.now();
+    img.src = payload.data;
 
-    // // FPS
-    // if (!handleVideoFrame._lastFps) handleVideoFrame._lastFps = Date.now();
-    // if (Date.now() - handleVideoFrame._lastFps > 1000) {
-    //   handleVideoFrame._lastFps = Date.now();
-    // }
+    const ph = document.getElementById('video-placeholder');
+    if (ph) ph.style.display = 'none';
+
+    // FPS counter
+    _videoFpsCount++;
+    const now = Date.now();
+    if (!_videoFpsStart) _videoFpsStart = now;
+    if (now - _videoFpsStart >= 2000) {
+      const fps = (_videoFpsCount / 2).toFixed(1);
+      const badge = document.getElementById('video-fps');
+      if (badge) badge.textContent = `${fps} fps`;
+      _videoFpsStart = now;
+      _videoFpsCount = 0;
+    }
   }
 
   // ============================================
-  // XỬ LÝ STATE TỪ LAPTOP
+  // STATE UPDATE
   // ============================================
-    function handleStateUpdate(payload) {
+  function handleStateUpdate(payload) {
     if (!payload) return;
-    console.log('[iPad] State:', payload);
+    console.log('[iPad] State:', {
+      step: payload.step,
+      framesCount: payload.frames?.length,
+      selectedFrame: payload.selectedFrame?.name,
+      hashtagsCount: payload.hashtags?.length,
+    });
 
-    // Step
     if (payload.step) {
       state.step = payload.step;
       updateStepUI(payload.step);
     }
 
-    // Frames — quan trọng: render ngay
-    if (payload.frames && Array.isArray(payload.frames) && payload.frames.length > 0) {
+    if (payload.frames && Array.isArray(payload.frames)) {
       state.frames = payload.frames;
       renderFrameList(payload.frames);
     }
 
-    // Khung đã chọn
     if (payload.selectedFrame) {
       state.selectedFrame = payload.selectedFrame;
       const nameEl = $('#selected-frame-name');
@@ -158,58 +129,65 @@
       if (metaEl) {
         metaEl.textContent = `${payload.selectedFrame.photo_count || 1} ô · chụp ${payload.selectedFrame.capture_count || 3} tấm`;
       }
-
       document.querySelectorAll('.frame-item-ipad').forEach((el) => {
         el.classList.toggle('selected', el.dataset.id === payload.selectedFrame.id);
       });
     }
 
-    // Hashtags
-    if (payload.hashtags && Array.isArray(payload.hashtags)) {
-      renderHashtagList(payload.hashtags);
-    }
-
-    // Photos pick
-    if (payload.allPhotos && Array.isArray(payload.allPhotos)) {
-      state.photos = payload.allPhotos;
-      renderPhotoPick(payload.allPhotos, payload.needPick || 1);
-    }
-
-    // Progress
     if (payload.captureProgress != null && payload.captureTotal != null) {
       const el = $('#capture-progress');
       if (el) el.textContent = `${payload.captureProgress} / ${payload.captureTotal}`;
     }
 
-    // Final result
+    if (payload.allPhotos && Array.isArray(payload.allPhotos)) {
+      state.photos = payload.allPhotos;
+      renderPhotoPick(payload.allPhotos, payload.needPick || 1);
+    }
+
+    if (payload.hashtags && Array.isArray(payload.hashtags)) {
+      renderHashtagList(payload.hashtags);
+    }
+
+    if (payload.selectedTags && Array.isArray(payload.selectedTags)) {
+      state.selectedTags = payload.selectedTags;
+      document.querySelectorAll('.hashtag-ipad').forEach((el) => {
+        el.classList.toggle('selected', state.selectedTags.includes(el.dataset.tag));
+      });
+    }
+
     if (payload.finalPhotoUrl) {
       showFinalResult(payload.finalPhotoUrl, payload.qrUrl);
     }
   }
+
   // ============================================
-  // RENDER UI
+  // RENDER
   // ============================================
   function showConnectUI() {
-    $('#connect-screen').style.display = 'flex';
-    $('#main-screen').style.display = 'none';
+    const cs = $('#connect-screen');
+    const ms = $('#main-screen');
+    if (cs) cs.style.display = 'flex';
+    if (ms) ms.style.display = 'none';
   }
 
   function showMainUI() {
-    $('#connect-screen').style.display = 'none';
-    $('#main-screen').style.display = 'flex';
-    $('#room-badge').textContent = `🏠 ${state.roomId}`;
+    const cs = $('#connect-screen');
+    const ms = $('#main-screen');
+    if (cs) cs.style.display = 'none';
+    if (ms) ms.style.display = 'flex';
+    const badge = $('#room-badge');
+    if (badge) badge.textContent = `🏠 ${state.roomId}`;
   }
 
   function updateStepUI(step) {
+    const stepMap = { select: 1, capture: 2, pick: 3, decorate: 4, result: 5 };
+    const cur = stepMap[step] || 1;
     document.querySelectorAll('.progress-step').forEach((el) => {
       const s = parseInt(el.dataset.step, 10);
-      const stepMap = { select: 1, capture: 2, pick: 3, decorate: 4, result: 5 };
-      const cur = stepMap[step] || 1;
       el.classList.toggle('active', s === cur);
       el.classList.toggle('done', s < cur);
     });
 
-    // Hiện panel tương ứng
     ['select', 'capture', 'pick', 'decorate', 'result'].forEach((s) => {
       const el = document.getElementById(`panel-${s}`);
       if (el) el.style.display = s === step ? 'flex' : 'none';
@@ -219,14 +197,24 @@
   function renderFrameList(frames) {
     const list = $('#ipad-frame-list');
     if (!list) return;
+
     if (!frames.length) {
-      list.innerHTML = '<p class="loading">Chưa có khung</p>';
+      list.innerHTML = '<p class="loading">Chưa có khung nào</p>';
       return;
     }
 
+    if (state.frameCount === frames.length && list.querySelectorAll('.frame-item-ipad').length === frames.length) {
+      document.querySelectorAll('.frame-item-ipad').forEach((el) => {
+        el.classList.toggle('selected', el.dataset.id === state.selectedFrame?.id);
+      });
+      return;
+    }
+
+    state.frameCount = frames.length;
+
     list.innerHTML = frames.map((f) => `
       <div class="frame-item-ipad" data-id="${f.id}">
-        <img src="${f.image_url}" loading="lazy" />
+        <img src="${f.image_url}" loading="lazy" alt="${f.name}" />
         <div class="frame-item-ipad-name">${f.name}</div>
       </div>
     `).join('');
@@ -238,20 +226,24 @@
         toast('Đã chọn khung trên laptop', 'success');
       });
     });
+
+    console.log('[iPad] Đã render', frames.length, 'khung');
   }
 
   function renderPhotoPick(photos, need) {
     const grid = $('#ipad-pick-grid');
     if (!grid) return;
 
-    state.pickedIndices = [];
-
-    grid.innerHTML = photos.map((src, i) => `
-      <div class="pick-item-ipad" data-idx="${i}">
-        <img src="${src}" />
-        <div class="pick-check-ipad">+</div>
-      </div>
-    `).join('');
+    grid.innerHTML = photos.map((src, i) => {
+      const picked = state.pickedIndices.indexOf(i);
+      const isPicked = picked !== -1;
+      return `
+        <div class="pick-item-ipad ${isPicked ? 'picked' : ''}" data-idx="${i}">
+          <img src="${src}" />
+          <div class="pick-check-ipad">${isPicked ? picked + 1 : '+'}</div>
+        </div>
+      `;
+    }).join('');
 
     grid.querySelectorAll('.pick-item-ipad').forEach((el) => {
       el.addEventListener('click', () => {
@@ -269,6 +261,13 @@
           state.pickedIndices.splice(pos, 1);
           el.classList.remove('picked');
           el.querySelector('.pick-check-ipad').textContent = '+';
+          grid.querySelectorAll('.pick-item-ipad').forEach((el2) => {
+            const idx2 = parseInt(el2.dataset.idx, 10);
+            const pos2 = state.pickedIndices.indexOf(idx2);
+            if (pos2 !== -1) {
+              el2.querySelector('.pick-check-ipad').textContent = pos2 + 1;
+            }
+          });
         }
       });
     });
@@ -277,6 +276,12 @@
   function renderHashtagList(tags) {
     const list = $('#ipad-hashtag-list');
     if (!list) return;
+
+    if (!tags.length) {
+      list.innerHTML = '<p class="loading" style="font-size:12px;">Chưa có hashtag</p>';
+      return;
+    }
+
     list.innerHTML = tags.map((h) =>
       `<div class="hashtag-ipad" data-tag="${h.tag}">#${h.tag}</div>`
     ).join('');
@@ -309,7 +314,7 @@
   }
 
   // ============================================
-  // NÚT ĐIỀU KHIỂN
+  // CONTROLS
   // ============================================
   function bindControlButtons() {
     const btnConnect = $('#btn-connect');
@@ -325,13 +330,11 @@
       roomInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') $('#btn-connect').click();
       });
-      // Auto uppercase
       roomInput.addEventListener('input', (e) => {
         e.target.value = e.target.value.toUpperCase();
       });
     }
 
-    // Nút vào chụp
     const btnContinue = $('#ipad-btn-continue');
     if (btnContinue) {
       btnContinue.addEventListener('click', () => {
@@ -339,17 +342,19 @@
       });
     }
 
-    // Nút chụp
     const btnCapture = $('#ipad-btn-capture');
     if (btnCapture) {
       btnCapture.addEventListener('click', () => {
         RealtimeSync.sendCommand({ action: 'capture' });
         btnCapture.disabled = true;
-        btnCapture.textContent = 'Đang chụp...';
+        btnCapture.innerHTML = '⏳ Đang chụp...';
+        setTimeout(() => {
+          btnCapture.disabled = false;
+          btnCapture.innerHTML = '📸 <span>BẮT ĐẦU CHỤP</span>';
+        }, 15000);
       });
     }
 
-    // Nút tiếp tục sau pick
     const btnPickedContinue = $('#ipad-btn-picked-continue');
     if (btnPickedContinue) {
       btnPickedContinue.addEventListener('click', () => {
@@ -360,7 +365,6 @@
       });
     }
 
-    // Nút tạo QR
     const btnFinalize = $('#ipad-btn-finalize');
     if (btnFinalize) {
       btnFinalize.addEventListener('click', () => {
@@ -368,7 +372,6 @@
       });
     }
 
-    // Nút chụp lại
     const btnRestart = $('#ipad-btn-restart');
     if (btnRestart) {
       btnRestart.addEventListener('click', () => {
@@ -376,10 +379,10 @@
       });
     }
 
-    // Nút ngắt kết nối
     const btnDisconnect = $('#btn-disconnect');
     if (btnDisconnect) {
       btnDisconnect.addEventListener('click', () => {
+        if (_reconnectTimer) clearInterval(_reconnectTimer);
         RealtimeSync.disconnect();
         state.connected = false;
         showConnectUI();
@@ -388,25 +391,17 @@
   }
 
   // ============================================
-  // KHỞI ĐỘNG
+  // INIT
   // ============================================
   window.addEventListener('load', () => {
     bindControlButtons();
     showConnectUI();
 
-    // Tự kết nối nếu URL có ?room=XXXXXX
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get('room');
     if (roomFromUrl) {
       $('#room-input').value = roomFromUrl.toUpperCase();
       setTimeout(() => connectToRoom(roomFromUrl.toUpperCase()), 500);
     }
-
-    // Ping lại iPad để laptop biết còn kết nối
-    setInterval(() => {
-      if (state.connected) {
-        RealtimeSync.sendPair({ role: 'ipad-alive', t: Date.now() });
-      }
-    }, 5000);
   });
 })();

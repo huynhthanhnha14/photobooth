@@ -14,12 +14,13 @@
   let previewStream = null;
   let _previewFrameOriginal = null;
   let _previewFrameCleared = null;
-  // ⭐ Realtime sync (Laptop ↔ iPad)
-let _rtRoomId = null;
-let _rtConnected = false;
-let _rtStreamTimer = null;
-let _rtHeartbeatTimer = null;
-  let _webrtcStarted = false;
+
+  // ⭐ Realtime sync
+  let _rtRoomId = null;
+  let _rtConnected = false;
+  let _rtStreamTimer = null;
+  let _rtHeartbeatTimer = null;
+  let _currentFacingMode = 'user';
 
   const $ = (sel) => document.querySelector(sel);
   const steps = {
@@ -66,8 +67,13 @@ let _rtHeartbeatTimer = null;
   async function startPreviewCamera() {
     try {
       if (previewStream) return;
+
       previewStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+        video: {
+          facingMode: _currentFacingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 960 },
+        },
         audio: false,
       });
       const previewVideo = $('#preview-video');
@@ -78,6 +84,13 @@ let _rtHeartbeatTimer = null;
       $('#camera-status-text').textContent = 'Camera đang bật';
       $('#cam-toggle-icon').textContent = '📷';
       $('#cam-toggle-text').textContent = 'Tắt camera';
+
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter((d) => d.kind === 'videoinput');
+        const btnSwitch = $('#btn-switch-camera');
+        if (btnSwitch) btnSwitch.style.display = cams.length > 1 ? 'flex' : 'none';
+      } catch (e) { /* ignore */ }
 
       refreshPreviewFrameImage();
     } catch (err) {
@@ -98,46 +111,71 @@ let _rtHeartbeatTimer = null;
     }
   }
 
+  async function switchCamera() {
+    try {
+      if (previewStream) {
+        previewStream.getTracks().forEach((t) => t.stop());
+        previewStream = null;
+      }
+      _currentFacingMode = _currentFacingMode === 'user' ? 'environment' : 'user';
+      await startPreviewCamera();
+      const label = $('#switch-cam-text');
+      if (label) {
+        label.textContent = _currentFacingMode === 'user' ? 'Đổi sang camera sau' : 'Đổi sang camera trước';
+      }
+    } catch (err) {
+      toast('Không đổi được camera: ' + err.message, 'error');
+    }
+  }
+
   $('#btn-toggle-camera').addEventListener('click', () => {
     if (previewStream) stopPreviewCamera();
     else startPreviewCamera();
   });
 
-  // ⭐ Nút zoom preview
-$('#btn-zoom-preview').addEventListener('click', (e) => {
-  e.stopPropagation();   // Không trigger click vào box
-  const box = document.getElementById('camera-preview-box');
-  const icon = document.getElementById('zoom-icon');
-  if (!box) return;
-  box.classList.toggle('zoomed');
-  if (icon) icon.textContent = box.classList.contains('zoomed') ? '✕' : '🔍';
-});
-
-// Click vào box khi đang zoom → đóng zoom
-document.getElementById('camera-preview-box').addEventListener('click', (e) => {
-  const box = e.currentTarget;
-  if (box.classList.contains('zoomed') && e.target === box) {
-    box.classList.remove('zoomed');
-    const icon = document.getElementById('zoom-icon');
-    if (icon) icon.textContent = '🔍';
-  }
-});
-
-// ESC để đóng zoom
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    const box = document.getElementById('camera-preview-box');
-    if (box && box.classList.contains('zoomed')) {
-      box.classList.remove('zoomed');
-      const icon = document.getElementById('zoom-icon');
-      if (icon) icon.textContent = '🔍';
-    }
-  }
-});
+  const btnSwitchCam = document.getElementById('btn-switch-camera');
+  if (btnSwitchCam) btnSwitchCam.addEventListener('click', switchCamera);
 
   window.addEventListener('load', () => {
     setTimeout(() => startPreviewCamera(), 500);
   });
+
+  // ============================================
+  // NÚT ZOOM PREVIEW
+  // ============================================
+  const btnZoom = document.getElementById('btn-zoom-preview');
+  const previewBox = document.getElementById('camera-preview-box');
+  const zoomIcon = document.getElementById('zoom-icon');
+
+  function toggleZoom() {
+    if (!previewBox || !zoomIcon) return;
+    previewBox.classList.toggle('zoomed');
+    zoomIcon.textContent = previewBox.classList.contains('zoomed') ? '✕' : '🔍';
+  }
+
+  function closeZoom() {
+    if (!previewBox || !zoomIcon) return;
+    previewBox.classList.remove('zoomed');
+    zoomIcon.textContent = '🔍';
+  }
+
+  if (btnZoom && previewBox && zoomIcon) {
+    btnZoom.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleZoom();
+    });
+
+    previewBox.addEventListener('click', (e) => {
+      if (previewBox.classList.contains('zoomed') && e.target === previewBox) {
+        closeZoom();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeZoom();
+    });
+  }
 
   // ============================================
   // COMPUTE SLOTS
@@ -168,7 +206,6 @@ document.addEventListener('keydown', (e) => {
     }));
   }
 
-  // ⭐ AI clear slot cho preview (chỉ xóa nền nhạt, giữ chữ)
   function smartClearPreview(frameCtx, slot, W, H) {
     const x = Math.floor(slot.x);
     const y = Math.floor(slot.y);
@@ -258,7 +295,7 @@ document.addEventListener('keydown', (e) => {
           const d = imgData.data;
           for (let i = 0; i < d.length; i += 4) {
             if (maskData[i + 3] > 128) {
-              const r = d[i], g = d[i+1], b = d[i+2], a = d[i+3];
+              const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
               const isTransparent = a < 50;
               const isBrightWhite = r > 220 && g > 220 && b > 220;
               const isLightGray = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && r > 195 && r < 240;
@@ -329,6 +366,8 @@ document.addEventListener('keydown', (e) => {
     updateSelectedFrameInfo();
     await updatePreviewOverlay();
     toast(`Đã chọn: ${frame.name}`, 'success');
+
+    broadcastFullState();
   }
 
   // ============================================
@@ -431,6 +470,8 @@ document.addEventListener('keydown', (e) => {
           if (frame) openFramePreview(frame);
         });
       });
+
+      broadcastFullState();
     } catch (err) {
       console.error(err);
       list.innerHTML = `<p class="loading">Lỗi: ${err.message}</p>`;
@@ -465,8 +506,12 @@ document.addEventListener('keydown', (e) => {
           }
           state.combinedPreview = null;
           schedulePreviewRender();
+
+          RealtimeSync.sendState({ selectedTags: state.selectedTags });
         });
       });
+
+      broadcastFullState();
     } catch (err) { console.error(err); }
   }
 
@@ -535,6 +580,11 @@ document.addEventListener('keydown', (e) => {
       state.pickedIndices.push(idx);
     }
     renderPickGrid();
+
+    RealtimeSync.sendState({
+      captureProgress: state.pickedIndices.length,
+      captureTotal: need,
+    });
   }
 
   // ============================================
@@ -806,7 +856,6 @@ document.addEventListener('keydown', (e) => {
     });
   }
 
-  // ⭐ Slider xoay
   const rotateSlider = document.getElementById('tune-rotate');
   if (rotateSlider) {
     rotateSlider.addEventListener('input', (e) => {
@@ -888,119 +937,6 @@ document.addEventListener('keydown', (e) => {
   }
 
   // ============================================
-  // CAPTURE GUIDE
-  // ============================================
-  async function loadCaptureGuide() {
-    const canvas = document.getElementById('capture-guide-canvas');
-    const video = document.getElementById('video');
-    if (!canvas || !video || !state.selectedFrame) return;
-
-    const videoRect = video.getBoundingClientRect();
-    if (videoRect.width === 0) {
-      setTimeout(loadCaptureGuide, 100);
-      return;
-    }
-
-    canvas.width = Math.round(videoRect.width);
-    canvas.height = Math.round(videoRect.height);
-
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    try {
-      const frameImg = await loadImageEl(state.selectedFrame.image_url);
-      const W = frameImg.naturalWidth;
-      const H = frameImg.naturalHeight;
-
-      const videoRatio = videoRect.width / videoRect.height;
-      const frameRatio = W / H;
-      let drawW, drawH, drawX, drawY;
-
-      if (videoRatio > frameRatio) {
-        drawH = canvas.height;
-        drawW = drawH * frameRatio;
-        drawX = (canvas.width - drawW) / 2;
-        drawY = 0;
-      } else {
-        drawW = canvas.width;
-        drawH = drawW / frameRatio;
-        drawX = 0;
-        drawY = (canvas.height - drawH) / 2;
-      }
-
-      const shapeType = state.selectedFrame.shape_type || 'rect';
-      const shapeValue = state.selectedFrame.shape_value || '';
-      const layout = state.selectedFrame.layout || 'auto';
-      const photoCount = state.selectedFrame.photo_count || 1;
-
-      let effectiveShape = shapeType;
-      if (shapeType === 'rect' && layout.startsWith('circle')) {
-        effectiveShape = 'circle';
-      }
-
-      ctx.save();
-      ctx.strokeStyle = 'rgba(251, 191, 36, 0.95)';
-      ctx.lineWidth = 4;
-      ctx.setLineDash([14, 8]);
-      ctx.shadowColor = 'rgba(251, 191, 36, 0.9)';
-      ctx.shadowBlur = 14;
-
-      if (effectiveShape !== 'rect' && window.ShapeGenerator) {
-        const mask = window.ShapeGenerator.renderShapeMask(effectiveShape, shapeValue, W, H);
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = W;
-        tempCanvas.height = H;
-        const tctx = tempCanvas.getContext('2d');
-        tctx.drawImage(mask, 0, 0);
-        tctx.globalCompositeOperation = 'source-in';
-        tctx.fillStyle = 'rgba(251, 191, 36, 0.9)';
-        tctx.fillRect(0, 0, W, H);
-        ctx.drawImage(tempCanvas, drawX, drawY, drawW, drawH);
-      } else {
-        const slots = await computeSlots(frameImg, layout, photoCount);
-        if (!slots || slots.length === 0) { ctx.restore(); return; }
-
-        const minX = Math.min(...slots.map((s) => s.x));
-        const minY = Math.min(...slots.map((s) => s.y));
-        const maxX = Math.max(...slots.map((s) => s.x + s.w));
-        const maxY = Math.max(...slots.map((s) => s.y + s.h));
-
-        const sw = maxX - minX;
-        const sh = maxY - minY;
-
-        const scaleX = drawW / W;
-        const scaleY = drawH / H;
-        const csx = drawX + minX * scaleX;
-        const csy = drawY + minY * scaleY;
-        const csw = sw * scaleX;
-        const csh = sh * scaleY;
-
-        const aspect = csw / csh;
-        const isSquare = Math.abs(aspect - 1) < 0.15;
-
-        if (isSquare) {
-          const size = Math.min(csw, csh);
-          const fx = csx + (csw - size) / 2;
-          const fy = csy + (csh - size) / 2;
-          ctx.strokeRect(fx, fy, size, size);
-        } else {
-          ctx.strokeRect(csx, csy, csw, csh);
-        }
-      }
-      ctx.restore();
-    } catch (err) {
-      console.warn('[Capture Guide] Lỗi:', err);
-    }
-  }
-
-  function clearCaptureGuide() {
-    const canvas = document.getElementById('capture-guide-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-  // ============================================
   // FLOW
   // ============================================
   $('#btn-continue').addEventListener('click', async () => {
@@ -1014,11 +950,9 @@ document.addEventListener('keydown', (e) => {
     $('#btn-capture').innerHTML = `<span>Chụp ${count} tấm</span><span class="btn-icon">📸</span>`;
     camera = new window.CameraManager($('#video'), $('#countdown'));
     await camera.start();
+    setTimeout(drawPoseOverlay, 300);
 
-    setTimeout(() => {
-      loadCaptureGuide();
-      drawPoseOverlay();
-    }, 400);
+    broadcastFullState();
   });
 
   $('#btn-capture').addEventListener('click', async () => {
@@ -1030,34 +964,51 @@ document.addEventListener('keydown', (e) => {
     const shots = await camera.shootSequence(count, cfg.COUNTDOWN_SECONDS, (current) => {
       $('#shots-preview').innerHTML = current.map((s) => `<img src="${s}" />`).join('');
       $('#capture-progress').textContent = `${current.length} / ${count}`;
+
+      RealtimeSync.sendState({
+        step: 'capture',
+        captureProgress: current.length,
+        captureTotal: count,
+      });
     });
 
     state.allPhotos = shots;
     state.pickedIndices = [];
     camera.stop();
     clearPoseOverlay();
-    clearCaptureGuide();
     showStep('pick');
     renderPickGrid();
 
     btn.disabled = false;
     btn.innerHTML = `<span>Chụp ${count} tấm</span><span class="btn-icon">📸</span>`;
+
+    RealtimeSync.sendState({
+      step: 'pick',
+      allPhotos: shots,
+      needPick: state.selectedFrame.photo_count || 1,
+    });
   });
 
   $('#btn-back-1').addEventListener('click', () => {
     if (camera) camera.stop();
     clearPoseOverlay();
-    clearCaptureGuide();
     showStep('select');
     setTimeout(async () => {
       if (!previewStream) await startPreviewCamera();
       if (state.selectedFrame) await updatePreviewOverlay();
     }, 300);
+
+    broadcastFullState();
   });
 
   $('#btn-clear-picks').addEventListener('click', () => {
     state.pickedIndices = [];
     renderPickGrid();
+
+    RealtimeSync.sendState({
+      step: 'pick',
+      captureProgress: 0,
+    });
   });
 
   $('#btn-picked-continue').addEventListener('click', () => {
@@ -1077,6 +1028,11 @@ document.addEventListener('keydown', (e) => {
       });
     });
     renderPreviewInDecorate();
+
+    RealtimeSync.sendState({
+      step: 'decorate',
+      selectedTags: state.selectedTags,
+    });
   });
 
   $('#btn-back-3').addEventListener('click', async () => {
@@ -1084,15 +1040,15 @@ document.addEventListener('keydown', (e) => {
     showStep('capture');
     camera = new window.CameraManager($('#video'), $('#countdown'));
     await camera.start();
-    setTimeout(() => {
-      loadCaptureGuide();
-      drawPoseOverlay();
-    }, 400);
+    setTimeout(drawPoseOverlay, 300);
+
+    broadcastFullState();
   });
 
   $('#btn-back-2').addEventListener('click', () => {
     state.combinedPreview = null;
     showStep('pick');
+    broadcastFullState();
   });
 
   // ============================================
@@ -1141,14 +1097,6 @@ document.addEventListener('keydown', (e) => {
 
       const resultWrap = $('#result-preview-wrap');
       resultWrap.innerHTML = `<img src="${combinedUrl}" alt="Ảnh" />`;
-          // ⭐ Gửi kết quả sang iPad
-      if (_rtConnected) {
-        RealtimeSync.sendState({
-          step: 'result',
-          finalPhotoUrl: combinedUrl,
-          qrUrl: qrCombined,
-        });
-      }
       resultWrap.onclick = () => window.ZoomModal.open([{ src: combinedUrl, caption: 'Ảnh tổng hợp' }], 0);
 
       const qrCombined = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(combinedUrl)}`;
@@ -1170,6 +1118,16 @@ document.addEventListener('keydown', (e) => {
 
       showStep('result');
       toast('Tạo ảnh thành công!', 'success');
+
+      // ⭐ Gửi kết quả sang iPad
+      if (_rtConnected) {
+        RealtimeSync.sendState({
+          step: 'result',
+          finalPhotoUrl: combinedUrl,
+          qrUrl: qrCombined,
+        });
+      }
+
     } catch (err) {
       console.error(err);
       toast('Lỗi: ' + err.message, 'error');
@@ -1188,7 +1146,6 @@ document.addEventListener('keydown', (e) => {
     state.combinedPreview = null;
     state.tuneOverride = null;
     clearPoseOverlay();
-    clearCaptureGuide();
     document.querySelectorAll('.frame-item').forEach((x) => x.classList.remove('selected'));
     $('#hashtag-list').querySelectorAll('.hashtag').forEach((x) => x.classList.remove('selected'));
     $('#btn-continue').disabled = true;
@@ -1201,6 +1158,8 @@ document.addEventListener('keydown', (e) => {
     updatePreviewOverlay();
     showStep('select');
     setTimeout(() => startPreviewCamera(), 300);
+
+    broadcastFullState();
   });
 
   let _resizeDebounce = null;
@@ -1208,273 +1167,246 @@ document.addEventListener('keydown', (e) => {
     clearTimeout(_resizeDebounce);
     _resizeDebounce = setTimeout(() => {
       if (steps.decorate.classList.contains('active')) updateHashtagDisplay();
-      if (steps.capture.classList.contains('active')) {
-        drawPoseOverlay();
-        loadCaptureGuide();
-      }
+      if (steps.capture.classList.contains('active')) drawPoseOverlay();
     }, 200);
   });
 
   // ============================================
-// ⭐ REALTIME SYNC VỚI iPad
-// ============================================
-function initRealtimeSync() {
-  const btnPair = document.getElementById('btn-show-ipad-pair');
-  const modal = document.getElementById('ipad-pair-modal');
-  if (!btnPair || !modal) return;
+  // ⭐ REALTIME SYNC VỚI iPAD
+  // ============================================
+  function initRealtimeSync() {
+    const btnPair = document.getElementById('btn-show-ipad-pair');
+    const modal = document.getElementById('ipad-pair-modal');
+    if (!btnPair || !modal) return;
 
-  const modalClose = modal.querySelector('.ipad-pair-close');
-  const roomCodeEl = document.getElementById('ipad-room-code');
-  const qrImg = document.getElementById('ipad-pair-qr-img');
-  const statusEl = document.getElementById('ipad-pair-status');
+    const modalClose = modal.querySelector('.ipad-pair-close');
+    const roomCodeEl = document.getElementById('ipad-room-code');
+    const qrImg = document.getElementById('ipad-pair-qr-img');
 
-  btnPair.addEventListener('click', () => {
-    // Tạo mã phòng mới nếu chưa có
-    if (!_rtRoomId) {
-      _rtRoomId = RealtimeSync.genRoomId();
-      roomCodeEl.textContent = _rtRoomId;
+    btnPair.addEventListener('click', () => {
+      if (!_rtRoomId) {
+        const host = window.location.hostname;
+        if (host === 'localhost' || host === '127.0.0.1') {
+          const ok = confirm(
+            '⚠️ Bạn đang chạy trên localhost.\n\n' +
+            'iPad KHÔNG thể truy cập localhost của laptop bạn.\n\n' +
+            'Cách sửa:\n' +
+            '1. Chạy server với LAN: python -m http.server 8000 --bind 0.0.0.0\n' +
+            '2. Tìm IP LAN (ipconfig/ifconfig)\n' +
+            '3. Mở trên laptop: http://192.168.x.x:8000\n' +
+            '4. Sau đó mới kết nối iPad.\n\n' +
+            'Tiếp tục?'
+          );
+          if (!ok) return;
+        }
 
-      // QR chứa URL ipad.html?room=XXXXXX
-      const ipadUrl = `${window.location.origin}${window.location.pathname.replace('index.html', '').replace(/\/$/, '')}/ipad.html?room=${_rtRoomId}`;
-      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(ipadUrl)}`;
+        _rtRoomId = RealtimeSync.genRoomId();
+        roomCodeEl.textContent = _rtRoomId;
 
-      // Kết nối realtime với tư cách laptop
-      setupLaptopRealtime();
-    }
-    modal.classList.add('active');
-  });
+        const basePath = window.location.pathname.replace(/\/[^\/]*$/, '/');
+        const ipadUrl = `${window.location.origin}${basePath}ipad.html?room=${_rtRoomId}`;
+        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(ipadUrl)}`;
 
-  modalClose.addEventListener('click', () => {
-    modal.classList.remove('active');
-  });
+        setupLaptopRealtime();
+      }
+      modal.classList.add('active');
+    });
 
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.classList.remove('active');
-  });
-}
+    modalClose.addEventListener('click', () => modal.classList.remove('active'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+  }
 
-function setupLaptopRealtime() {
-      RealtimeSync.on('onConnect', () => {
-      console.log('[iPad] Đã kết nối phòng:', state.roomId);
-      state.connected = true;
-      RealtimeSync.sendPair({ role: 'ipad', joinedAt: Date.now() });
-      showMainUI();
-      toast('Đã kết nối!', 'success');
+  function setupLaptopRealtime() {
+    RealtimeSync.on('onConnect', () => {
+      console.log('[Laptop] Đã kết nối phòng:', _rtRoomId);
+      broadcastFullState();
+    });
 
-      // ⭐ Khởi động WebRTC receiver
-      if (!_webrtcStarted) {
-        _webrtcStarted = true;
-        setTimeout(() => {
-          const videoEl = document.getElementById('remote-video');
-          if (videoEl) {
-            WebRTCStream.initReceiver(videoEl, state.roomId);
-            console.log('[iPad] Đã khởi động WebRTC receiver');
+    RealtimeSync.on('onCommand', (cmd) => {
+      handleIpadCommand(cmd);
+    });
+
+    RealtimeSync.on('onPair', (payload) => {
+      if (payload.role === 'ipad' || payload.role === 'ipad-alive') {
+        if (!_rtConnected) {
+          _rtConnected = true;
+          console.log('[Laptop] iPad đã kết nối');
+          const btn = document.getElementById('btn-show-ipad-pair');
+          if (btn) btn.classList.add('connected');
+          const status = document.getElementById('ipad-pair-status');
+          if (status) {
+            status.classList.add('connected');
+            status.textContent = '✅ iPad đã kết nối';
           }
-        }, 500);
+
+          // ⭐ Bắt đầu stream video
+          startVideoStream();
+        }
+
+        // ⭐ Gửi state nhiều lần để chắc chắn iPad nhận
+        broadcastFullState();
+        setTimeout(broadcastFullState, 500);
+        setTimeout(broadcastFullState, 1500);
+        setTimeout(broadcastFullState, 3000);
       }
     });
 
-  RealtimeSync.on('onState', () => {
-    // Laptop không nhận state từ iPad
-  });
+    RealtimeSync.connect(_rtRoomId, 'laptop');
+  }
 
-  RealtimeSync.on('onCommand', (cmd) => {
-    handleIpadCommand(cmd);
-  });
+  function handleIpadCommand(cmd) {
+    if (!cmd || !cmd.action) return;
+    console.log('[Laptop] Nhận lệnh từ iPad:', cmd);
 
-  RealtimeSync.on('onPair', (payload) => {
-    if (payload.role === 'ipad' || payload.role === 'ipad-alive') {
-      if (!_rtConnected) {
-        _rtConnected = true;
-        console.log('[Laptop] iPad đã kết nối');
-        const btn = document.getElementById('btn-show-ipad-pair');
-        if (btn) btn.classList.add('connected');
-        const status = document.getElementById('ipad-pair-status');
-        if (status) {
-          status.classList.add('connected');
-          status.textContent = '✅ iPad đã kết nối';
+    switch (cmd.action) {
+      case 'select-frame': {
+        const frame = state.frames.find((f) => f.id === cmd.frameId);
+        if (frame) selectFrame(frame);
+        break;
+      }
+      case 'continue-to-capture': {
+        const btn = $('#btn-continue');
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case 'capture': {
+        const btn = $('#btn-capture');
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case 'picked-continue': {
+        if (Array.isArray(cmd.picks)) {
+          state.pickedIndices = cmd.picks;
+          state.photos = state.pickedIndices.map((i) => state.allPhotos[i]);
+          renderPickGrid();
         }
+        const btn = $('#btn-picked-continue');
+        if (btn && !btn.disabled) btn.click();
+        break;
       }
-      // Gửi lại full state cho iPad
-      broadcastFullState();
-    }
-  });
-
-  RealtimeSync.connect(_rtRoomId, 'laptop');
-  //startStreamingToIpad();
-}
-
-function handleIpadCommand(cmd) {
-  if (!cmd || !cmd.action) return;
-  console.log('[Laptop] Nhận lệnh từ iPad:', cmd);
-
-  switch (cmd.action) {
-    case 'select-frame': {
-      const frame = state.frames.find((f) => f.id === cmd.frameId);
-      if (frame) selectFrame(frame);
-      break;
-    }
-
-    case 'continue-to-capture': {
-      const btn = $('#btn-continue');
-      if (btn && !btn.disabled) btn.click();
-      break;
-    }
-
-    case 'capture': {
-      const btn = $('#btn-capture');
-      if (btn && !btn.disabled) btn.click();
-      break;
-    }
-
-    case 'picked-continue': {
-      // Đồng bộ picks
-      if (Array.isArray(cmd.picks)) {
-        state.pickedIndices = cmd.picks;
-        state.photos = state.pickedIndices.map((i) => state.allPhotos[i]);
-        renderPickGrid();
+      case 'set-tags': {
+        if (Array.isArray(cmd.tags)) {
+          state.selectedTags = cmd.tags;
+          document.querySelectorAll('#hashtag-list .hashtag').forEach((el) => {
+            el.classList.toggle('selected', state.selectedTags.includes(el.dataset.tag));
+          });
+          state.combinedPreview = null;
+          schedulePreviewRender();
+        }
+        break;
       }
-      const btn = $('#btn-picked-continue');
-      if (btn && !btn.disabled) btn.click();
-      break;
-    }
-
-    case 'set-tags': {
-      if (Array.isArray(cmd.tags)) {
-        state.selectedTags = cmd.tags;
-        // Update UI
-        document.querySelectorAll('#hashtag-list .hashtag').forEach((el) => {
-          el.classList.toggle('selected', state.selectedTags.includes(el.dataset.tag));
-        });
-        state.combinedPreview = null;
-        schedulePreviewRender();
+      case 'finalize': {
+        const btn = $('#btn-finalize');
+        if (btn && !btn.disabled) btn.click();
+        break;
       }
-      break;
-    }
-
-    case 'finalize': {
-      const btn = $('#btn-finalize');
-      if (btn && !btn.disabled) btn.click();
-      break;
-    }
-
-    case 'restart': {
-      const btn = $('#btn-restart');
-      if (btn) btn.click();
-      break;
+      case 'restart': {
+        const btn = $('#btn-restart');
+        if (btn) btn.click();
+        break;
+      }
     }
   }
-}
 
-// ⭐ Gửi full state sang iPad
-function broadcastFullState() {
-  if (!_rtConnected) return;
-
-  let currentStep = 'select';
-  if (steps.capture.classList.contains('active')) currentStep = 'capture';
-  else if (steps.pick.classList.contains('active')) currentStep = 'pick';
-  else if (steps.decorate.classList.contains('active')) currentStep = 'decorate';
-  else if (steps.result.classList.contains('active')) currentStep = 'result';
-
-  RealtimeSync.sendState({
-    step: currentStep,
-    frames: state.frames.map((f) => ({
-      id: f.id,
-      name: f.name,
-      image_url: f.image_url,
-      photo_count: f.photo_count,
-      capture_count: f.capture_count,
-    })),
-    selectedFrame: state.selectedFrame ? {
-      id: state.selectedFrame.id,
-      name: state.selectedFrame.name,
-      photo_count: state.selectedFrame.photo_count,
-      capture_count: state.selectedFrame.capture_count,
-    } : null,
-    hashtags: state.hashtags.map((h) => ({ tag: h.tag })),
-    selectedTags: state.selectedTags,
-    needPick: state.selectedFrame?.photo_count || 1,
-  });
-}
-
-// ⭐ Stream video từ laptop → iPad (5fps, JPEG)
-function startStreamingToIpad() {
-  if (_rtStreamTimer) return;
-
-  _rtStreamTimer = setInterval(() => {
+  function broadcastFullState() {
     if (!_rtConnected) return;
 
-    // Ưu tiên preview video (bước 1), fallback sang camera step 2
-    let video = document.getElementById('preview-video');
-    if (!video || video.readyState < 2) {
-      video = document.getElementById('video');
-    }
-    if (!video || video.readyState < 2 || !video.videoWidth) return;
+    let currentStep = 'select';
+    if (steps.capture.classList.contains('active')) currentStep = 'capture';
+    else if (steps.pick.classList.contains('active')) currentStep = 'pick';
+    else if (steps.decorate.classList.contains('active')) currentStep = 'decorate';
+    else if (steps.result.classList.contains('active')) currentStep = 'result';
 
-    try {
-      const canvas = document.createElement('canvas');
-      // Kích thước nhỏ để tiết kiệm băng thông
-      const maxW = 640;
-      const ratio = video.videoHeight / video.videoWidth;
-      canvas.width = maxW;
-      canvas.height = Math.round(maxW * ratio);
+    const payload = {
+      step: currentStep,
+      frames: state.frames.map((f) => ({
+        id: f.id,
+        name: f.name,
+        image_url: f.image_url,
+        photo_count: f.photo_count,
+        capture_count: f.capture_count,
+      })),
+      selectedFrame: state.selectedFrame ? {
+        id: state.selectedFrame.id,
+        name: state.selectedFrame.name,
+        photo_count: state.selectedFrame.photo_count,
+        capture_count: state.selectedFrame.capture_count,
+      } : null,
+      hashtags: state.hashtags.map((h) => ({ tag: h.tag })),
+      selectedTags: state.selectedTags,
+      needPick: state.selectedFrame?.photo_count || 1,
+    };
 
-      const ctx = canvas.getContext('2d');
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    console.log('[Broadcast] Frames:', payload.frames.length, '· Step:', currentStep);
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.55);
+    RealtimeSync.sendState(payload);
+  }
 
-      RealtimeSync.sendVideo({ data: dataUrl, t: Date.now() });
-    } catch (err) {
-      // ignore
-    }
-  }, 200); // 5 fps
-}
+  // ⭐ Stream 3fps, JPEG 0.4, 480px
+  function startVideoStream() {
+    if (_rtStreamTimer) clearInterval(_rtStreamTimer);
 
-// ⭐ Hooks: gửi state mỗi khi có thay đổi
-function hookStateUpdates() {
-  // Sau khi select frame
-  const _origSelectFrame = selectFrame;
-  // Không cần override vì đã hook trong các nơi
+    console.log('[Stream] Bắt đầu stream video 3fps');
 
-  // Sau khi chụp xong
-  document.addEventListener('click', (e) => {
-    const id = e.target.id;
-    if (['btn-capture', 'btn-picked-continue', 'btn-finalize', 'btn-restart', 'btn-back-1', 'btn-back-2', 'btn-back-3'].includes(id)) {
-      setTimeout(broadcastFullState, 400);
-    }
+    _rtStreamTimer = setInterval(() => {
+      if (!_rtConnected) return;
+
+      let video = document.getElementById('preview-video');
+      if (!video || video.readyState < 2 || !video.videoWidth) {
+        video = document.getElementById('video');
+      }
+      if (!video || video.readyState < 2 || !video.videoWidth) return;
+
+      try {
+        const canvas = document.createElement('canvas');
+        const maxW = 480;
+        const ratio = video.videoHeight / video.videoWidth;
+        canvas.width = maxW;
+        canvas.height = Math.round(maxW * ratio);
+
+        const ctx = canvas.getContext('2d');
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+        RealtimeSync.sendVideo({ data: dataUrl, t: Date.now() });
+      } catch (err) { /* ignore */ }
+    }, 330);
+  }
+
+  function hookStateUpdates() {
+    document.addEventListener('click', (e) => {
+      const id = e.target.id;
+      if (['btn-capture', 'btn-picked-continue', 'btn-finalize', 'btn-restart', 'btn-back-1', 'btn-back-2', 'btn-back-3'].includes(id)) {
+        setTimeout(broadcastFullState, 400);
+      }
+    });
+
+    _rtHeartbeatTimer = setInterval(() => {
+      if (_rtConnected) {
+        broadcastFullState();
+        if (state.allPhotos.length) {
+          RealtimeSync.sendState({
+            allPhotos: state.allPhotos,
+            captureProgress: state.pickedIndices.length,
+            captureTotal: state.selectedFrame?.photo_count || 1,
+          });
+        }
+      }
+    }, 3000);
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      initRealtimeSync();
+      hookStateUpdates();
+    }, 500);
   });
 
-  // Sau khi chọn ảnh
-  const _origRenderPickGrid = renderPickGrid;
-  // Không override vì quá phức tạp — dùng interval nhẹ
-
-  // Heartbeat: gửi state mỗi 2s
-  _rtHeartbeatTimer = setInterval(() => {
-    if (_rtConnected) {
-      broadcastFullState();
-      // Gửi thêm allPhotos nếu có
-      if (state.allPhotos.length) {
-        RealtimeSync.sendState({
-          allPhotos: state.allPhotos,
-          captureProgress: state.pickedIndices.length,
-          captureTotal: state.selectedFrame?.photo_count || 1,
-        });
-      }
-    }
-  }, 2000);
-}
-
-// ⭐ Chạy init khi DOM ready
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
-    initRealtimeSync();
-    hookStateUpdates();
-  }, 500);
-});
-
+  // ============================================
+  // INIT
+  // ============================================
   loadFrames();
   loadHashtags();
   updateSelectedFrameInfo();

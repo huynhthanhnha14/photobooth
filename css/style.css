@@ -1706,6 +1706,48 @@ input[type="range"]::-moz-range-thumb {
   object-fit: contain;
   display: block;
   background: #000;
+  transform: scaleX(-1);
+  -webkit-transform: scaleX(-1);
+}
+
+.ipad-video-fps {
+  position: absolute;
+  top: 10px; right: 10px;
+  padding: 4px 10px;
+  background: rgba(10, 22, 40, 0.9);
+  border: 1px solid var(--tech-cyan);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--tech-cyan);
+  letter-spacing: 1px;
+  z-index: 3;
+}
+
+.ipad-video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 22, 40, 0.9);
+  color: var(--tech-sky);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  z-index: 4;
+  text-align: center;
+  padding: 20px;
+}
+
+.ipad-video-placeholder span {
+  animation: pulseOpacity 2s ease-in-out infinite;
+}
+
+@keyframes pulseOpacity {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
 
 .ipad-video-badge {

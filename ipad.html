@@ -8,7 +8,7 @@
 </head>
 <body class="ipad-layout">
 
-  <!-- ══════════ SCREEN 1: KẾT NỐI ══════════ -->
+  <!-- SCREEN 1: KẾT NỐI -->
   <div id="connect-screen" class="connect-screen">
     <div class="connect-box">
       <div class="connect-logo">📱</div>
@@ -25,12 +25,12 @@
       <p id="connect-status" class="connect-status">Chưa kết nối</p>
 
       <p class="connect-hint">
-        💡 Trên laptop: mở <code>index.html</code> → nhấn <code>📱 iPad</code>
+        💡 Trên laptop: mở <code>index.html</code> → nhấn <code>📱</code>
       </p>
     </div>
   </div>
 
-  <!-- ══════════ SCREEN 2: ĐIỀU KHIỂN ══════════ -->
+  <!-- SCREEN 2: ĐIỀU KHIỂN -->
   <div id="main-screen" class="main-screen" style="display:none;">
 
     <header class="ipad-header">
@@ -39,7 +39,6 @@
       <button id="btn-disconnect" class="ipad-btn-small">✕</button>
     </header>
 
-    <!-- Progress -->
     <div class="ipad-progress">
       <div class="progress-step" data-step="1"><span class="progress-num">1</span><span class="progress-label">Khung</span></div>
       <div class="progress-line"></div>
@@ -52,17 +51,18 @@
       <div class="progress-step" data-step="5"><span class="progress-num">5</span><span class="progress-label">QR</span></div>
     </div>
 
-    <!-- Main content: 2 columns -->
     <div class="ipad-main">
 
-      <!-- LEFT: Video stream từ laptop -->
       <div class="ipad-left">
         <div class="ipad-video-wrap">
-  <video id="remote-video" class="ipad-video" autoplay playsinline muted></video>
-  <!-- <div class="ipad-video-badge">🔴 Live từ laptop</div> -->
-</div>
+          <img id="remote-video-img" class="ipad-video" alt="Camera từ laptop" />
+          <div class="ipad-video-badge">🔴 Live</div>
+          <div class="ipad-video-fps" id="video-fps">0 fps</div>
+          <div class="ipad-video-placeholder" id="video-placeholder">
+            <span>📷 Đang chờ camera từ laptop...</span>
+          </div>
+        </div>
 
-        <!-- Info khung đang chọn -->
         <div class="ipad-info-box">
           <div class="info-item highlight">
             <span class="info-label">Khung đang chọn</span>
@@ -74,7 +74,6 @@
           </div>
         </div>
 
-        <!-- Nút chụp -->
         <div class="ipad-capture-info" id="panel-capture" style="display:none;">
           <div class="ipad-capture-progress">
             <span class="info-label">Tiến độ</span>
@@ -86,10 +85,8 @@
         </div>
       </div>
 
-      <!-- RIGHT: Frames list / Photo pick / Final -->
       <div class="ipad-right">
 
-        <!-- PANEL SELECT -->
         <div id="panel-select" class="ipad-panel">
           <h3 class="ipad-panel-title">🎨 Chọn khung</h3>
           <div id="ipad-frame-list" class="ipad-frame-list">
@@ -100,7 +97,6 @@
           </button>
         </div>
 
-        <!-- PANEL PICK -->
         <div id="panel-pick" class="ipad-panel" style="display:none;">
           <h3 class="ipad-panel-title">✅ Chọn ảnh ưng ý</h3>
           <div id="ipad-pick-grid" class="ipad-pick-grid"></div>
@@ -109,7 +105,6 @@
           </button>
         </div>
 
-        <!-- PANEL DECORATE -->
         <div id="panel-decorate" class="ipad-panel" style="display:none;">
           <h3 class="ipad-panel-title">✨ Xem trước</h3>
           <p class="ipad-hint">Chọn hashtag trên iPad, laptop sẽ tự chèn</p>
@@ -119,7 +114,6 @@
           </button>
         </div>
 
-        <!-- PANEL RESULT -->
         <div id="panel-result" class="ipad-panel" style="display:none;">
           <h3 class="ipad-panel-title">🎉 Hoàn tất</h3>
           <div id="ipad-final-photo" class="ipad-final-photo"></div>
@@ -137,12 +131,10 @@
 
   <div id="toast" class="toast"></div>
 
-  <!-- ⭐ iPad cần Supabase + RealtimeSync + Controller -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
-    <script src="js/realtime-sync.js"></script>
-  <script src="js/webrtc-stream.js"></script>
+  <script src="js/realtime-sync.js"></script>
   <script src="js/ipad-controller.js"></script>
 </body>
 </html>
