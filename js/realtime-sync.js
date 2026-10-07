@@ -1,10 +1,10 @@
 // ============================================
-// REALTIME SYNC — Đồng bộ Laptop ↔ iPad qua Supabase
+// REALTIME SYNC — Laptop ↔ iPad
 // ============================================
 window.RealtimeSync = (function () {
   let channel = null;
   let roomId = null;
-  let role = null;   // 'laptop' hoặc 'ipad'
+  let role = null;
   let handlers = {};
 
   function connect(rid, r) {
@@ -12,6 +12,8 @@ window.RealtimeSync = (function () {
 
     roomId = rid;
     role = r;
+
+    console.log(`[RealtimeSync] Đang connect room=${rid}, role=${r}`);
 
     channel = window.supabaseClient.channel(`booth-${roomId}`, {
       config: {
@@ -33,9 +35,12 @@ window.RealtimeSync = (function () {
         if (handlers.onPair) handlers.onPair(payload.payload);
       });
 
-    return channel.subscribe((status) => {
-      console.log('[Realtime] Status:', status, '· Room:', roomId, '· Role:', role);
+    return channel.subscribe((status, err) => {
+      console.log(`[RealtimeSync] Status: ${status}`, err || '');
       if (status === 'SUBSCRIBED' && handlers.onConnect) handlers.onConnect();
+      if (status === 'CHANNEL_ERROR') {
+        console.error('[RealtimeSync] Lỗi channel:', err);
+      }
     });
   }
 
@@ -49,22 +54,26 @@ window.RealtimeSync = (function () {
 
   function sendState(data) {
     if (!channel) return;
-    channel.send({ type: 'broadcast', event: 'state', payload: data });
+    channel.send({ type: 'broadcast', event: 'state', payload: data })
+      .catch((err) => console.warn('[RealtimeSync] sendState lỗi:', err));
   }
 
   function sendCommand(data) {
     if (!channel) return;
-    channel.send({ type: 'broadcast', event: 'command', payload: data });
+    channel.send({ type: 'broadcast', event: 'command', payload: data })
+      .catch((err) => console.warn('[RealtimeSync] sendCommand lỗi:', err));
   }
 
   function sendVideo(data) {
     if (!channel) return;
-    channel.send({ type: 'broadcast', event: 'video', payload: data });
+    // Không catch lỗi để tránh spam console
+    channel.send({ type: 'broadcast', event: 'video', payload: data }).catch(() => {});
   }
 
   function sendPair(data) {
     if (!channel) return;
-    channel.send({ type: 'broadcast', event: 'pair', payload: data });
+    channel.send({ type: 'broadcast', event: 'pair', payload: data })
+      .catch((err) => console.warn('[RealtimeSync] sendPair lỗi:', err));
   }
 
   function genRoomId() {

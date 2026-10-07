@@ -965,11 +965,10 @@
       $('#shots-preview').innerHTML = current.map((s) => `<img src="${s}" />`).join('');
       $('#capture-progress').textContent = `${current.length} / ${count}`;
 
-      RealtimeSync.sendState({
-        step: 'capture',
-        captureProgress: current.length,
-        captureTotal: count,
-      });
+       RealtimeSync.sendState({
+      step: 'pick',
+      needPick: state.selectedFrame.photo_count || 1,
+    });
     });
 
     state.allPhotos = shots;
@@ -1216,13 +1215,27 @@
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
   }
 
-  function setupLaptopRealtime() {
+    function setupLaptopRealtime() {
     RealtimeSync.on('onConnect', () => {
-      console.log('[Laptop] Đã kết nối phòng:', _rtRoomId);
-      broadcastFullState();
+      console.log('[Laptop] ✅ Đã kết nối phòng:', _rtRoomId);
+      // ⭐ Bắt đầu stream NGAY khi connect (không cần đợi iPad pair)
+      startVideoStream();
+      // ⭐ Broadcast state liên tục mỗi 1s
+      if (_rtHeartbeatTimer) clearInterval(_rtHeartbeatTimer);
+      _rtHeartbeatTimer = setInterval(() => {
+        broadcastFullState();
+      }, 1000);
     });
 
     RealtimeSync.on('onCommand', (cmd) => {
+      // ⭐ Xử lý request-state đặc biệt
+      if (cmd.action === 'request-state') {
+        console.log('[Laptop] iPad xin state');
+        broadcastFullState();
+        setTimeout(broadcastFullState, 300);
+        setTimeout(broadcastFullState, 800);
+        return;
+      }
       handleIpadCommand(cmd);
     });
 
@@ -1230,7 +1243,7 @@
       if (payload.role === 'ipad' || payload.role === 'ipad-alive') {
         if (!_rtConnected) {
           _rtConnected = true;
-          console.log('[Laptop] iPad đã kết nối');
+          console.log('[Laptop] ✅ iPad đã kết nối');
           const btn = document.getElementById('btn-show-ipad-pair');
           if (btn) btn.classList.add('connected');
           const status = document.getElementById('ipad-pair-status');
@@ -1238,27 +1251,28 @@
             status.classList.add('connected');
             status.textContent = '✅ iPad đã kết nối';
           }
-
-          // ⭐ Bắt đầu stream video
-          startVideoStream();
         }
 
-        // ⭐ Gửi state nhiều lần để chắc chắn iPad nhận
+        // ⭐ Broadcast liên tục để chắc chắn iPad nhận
         broadcastFullState();
-        setTimeout(broadcastFullState, 500);
+        setTimeout(broadcastFullState, 300);
+        setTimeout(broadcastFullState, 800);
         setTimeout(broadcastFullState, 1500);
-        setTimeout(broadcastFullState, 3000);
       }
     });
 
     RealtimeSync.connect(_rtRoomId, 'laptop');
   }
 
-  function handleIpadCommand(cmd) {
+    function handleIpadCommand(cmd) {
     if (!cmd || !cmd.action) return;
     console.log('[Laptop] Nhận lệnh từ iPad:', cmd);
 
     switch (cmd.action) {
+      case 'request-state': {
+        // Đã xử lý ở setupLaptopRealtime
+        break;
+      }
       case 'select-frame': {
         const frame = state.frames.find((f) => f.id === cmd.frameId);
         if (frame) selectFrame(frame);
@@ -1308,7 +1322,7 @@
     }
   }
 
-  function broadcastFullState() {
+    function broadcastFullState() {
     if (!_rtConnected) return;
 
     let currentStep = 'select';
@@ -1317,27 +1331,16 @@
     else if (steps.decorate.classList.contains('active')) currentStep = 'decorate';
     else if (steps.result.classList.contains('active')) currentStep = 'result';
 
+    // ⭐ CHỈ gửi ID + state nhẹ (không gửi image_url base64)
     const payload = {
       step: currentStep,
-      frames: state.frames.map((f) => ({
-        id: f.id,
-        name: f.name,
-        image_url: f.image_url,
-        photo_count: f.photo_count,
-        capture_count: f.capture_count,
-      })),
-      selectedFrame: state.selectedFrame ? {
-        id: state.selectedFrame.id,
-        name: state.selectedFrame.name,
-        photo_count: state.selectedFrame.photo_count,
-        capture_count: state.selectedFrame.capture_count,
-      } : null,
-      hashtags: state.hashtags.map((h) => ({ tag: h.tag })),
+      selectedFrameId: state.selectedFrame?.id || null,
       selectedTags: state.selectedTags,
-      needPick: state.selectedFrame?.photo_count || 1,
+      captureProgress: state.pickedIndices.length,
+      captureTotal: state.selectedFrame?.photo_count || 1,
     };
 
-    console.log('[Broadcast] Frames:', payload.frames.length, '· Step:', currentStep);
+    console.log('[Broadcast] Step:', currentStep, '· FrameId:', payload.selectedFrameId);
 
     RealtimeSync.sendState(payload);
   }
@@ -1375,26 +1378,13 @@
     }, 330);
   }
 
-  function hookStateUpdates() {
+    function hookStateUpdates() {
     document.addEventListener('click', (e) => {
       const id = e.target.id;
       if (['btn-capture', 'btn-picked-continue', 'btn-finalize', 'btn-restart', 'btn-back-1', 'btn-back-2', 'btn-back-3'].includes(id)) {
         setTimeout(broadcastFullState, 400);
       }
     });
-
-    _rtHeartbeatTimer = setInterval(() => {
-      if (_rtConnected) {
-        broadcastFullState();
-        if (state.allPhotos.length) {
-          RealtimeSync.sendState({
-            allPhotos: state.allPhotos,
-            captureProgress: state.pickedIndices.length,
-            captureTotal: state.selectedFrame?.photo_count || 1,
-          });
-        }
-      }
-    }, 3000);
   }
 
   document.addEventListener('DOMContentLoaded', () => {

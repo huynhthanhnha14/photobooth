@@ -1,13 +1,15 @@
 // ============================================
-// iPAD CONTROLLER — Nhận video + Gửi lệnh
+// iPAD CONTROLLER — Tự load Supabase + Nhận lệnh
 // ============================================
 (function () {
+  const supabase = window.supabaseClient;
   const $ = (sel) => document.querySelector(sel);
 
   const state = {
     connected: false,
     roomId: null,
     frames: [],
+    hashtags: [],
     selectedFrame: null,
     selectedTags: [],
     step: 'select',
@@ -30,7 +32,51 @@
   }
 
   // ============================================
-  // KẾT NỐI
+  // LOAD TỪ SUPABASE (không qua laptop)
+  // ============================================
+  async function loadFramesFromDB() {
+    try {
+      console.log('[iPad] Đang tải khung từ Supabase...');
+      const { data, error } = await supabase
+        .from('frames')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[iPad] Lỗi load frames:', error);
+        return;
+      }
+
+      state.frames = data || [];
+      console.log('[iPad] Đã tải', state.frames.length, 'khung');
+      renderFrameList(state.frames);
+    } catch (err) {
+      console.error('[iPad] Lỗi load frames:', err);
+    }
+  }
+
+  async function loadHashtagsFromDB() {
+    try {
+      const { data, error } = await supabase
+        .from('hashtags')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (error) {
+        console.error('[iPad] Lỗi load hashtags:', error);
+        return;
+      }
+
+      state.hashtags = data || [];
+      console.log('[iPad] Đã tải', state.hashtags.length, 'hashtags');
+      renderHashtagList(state.hashtags);
+    } catch (err) {
+      console.error('[iPad] Lỗi load hashtags:', err);
+    }
+  }
+
+  // ============================================
+  // KẾT NỐI REALTIME
   // ============================================
   function connectToRoom(roomId) {
     if (!roomId || roomId.length < 4) {
@@ -39,20 +85,29 @@
     }
 
     state.roomId = roomId.toUpperCase();
+    console.log('[iPad] Đang kết nối phòng:', state.roomId);
 
-    RealtimeSync.on('onConnect', () => {
-      console.log('[iPad] Đã kết nối phòng:', state.roomId);
+    RealtimeSync.on('onConnect', async () => {
+      console.log('[iPad] ✅ Đã kết nối phòng:', state.roomId);
       state.connected = true;
       RealtimeSync.sendPair({ role: 'ipad', joinedAt: Date.now() });
       showMainUI();
       toast('Đã kết nối!', 'success');
 
+      // ⭐ Load frames + hashtags từ Supabase
+      await loadFramesFromDB();
+      await loadHashtagsFromDB();
+
+      // Ping định kỳ để laptop biết iPad còn sống
       if (_reconnectTimer) clearInterval(_reconnectTimer);
       _reconnectTimer = setInterval(() => {
         if (state.connected) {
           RealtimeSync.sendPair({ role: 'ipad-alive', t: Date.now() });
         }
       }, 3000);
+
+      // ⭐ Xin state từ laptop
+      RealtimeSync.sendCommand({ action: 'request-state' });
     });
 
     RealtimeSync.on('onState', (payload) => handleStateUpdate(payload));
@@ -100,54 +155,47 @@
   }
 
   // ============================================
-  // STATE UPDATE
+  // STATE UPDATE (từ laptop)
   // ============================================
   function handleStateUpdate(payload) {
     if (!payload) return;
-    console.log('[iPad] State:', {
-      step: payload.step,
-      framesCount: payload.frames?.length,
-      selectedFrame: payload.selectedFrame?.name,
-      hashtagsCount: payload.hashtags?.length,
-    });
+    console.log('[iPad] Nhận state:', payload);
 
     if (payload.step) {
       state.step = payload.step;
       updateStepUI(payload.step);
     }
 
-    if (payload.frames && Array.isArray(payload.frames)) {
-      state.frames = payload.frames;
-      renderFrameList(payload.frames);
-    }
-
-    if (payload.selectedFrame) {
-      state.selectedFrame = payload.selectedFrame;
-      const nameEl = $('#selected-frame-name');
-      if (nameEl) nameEl.textContent = payload.selectedFrame.name || '—';
-      const metaEl = $('#selected-frame-meta');
-      if (metaEl) {
-        metaEl.textContent = `${payload.selectedFrame.photo_count || 1} ô · chụp ${payload.selectedFrame.capture_count || 3} tấm`;
+    // Selected frame (chỉ ID, không phải full data)
+    if (payload.selectedFrameId !== undefined) {
+      const frame = state.frames.find((f) => f.id === payload.selectedFrameId);
+      if (frame) {
+        state.selectedFrame = frame;
+        const nameEl = $('#selected-frame-name');
+        if (nameEl) nameEl.textContent = frame.name || '—';
+        const metaEl = $('#selected-frame-meta');
+        if (metaEl) {
+          metaEl.textContent = `${frame.photo_count || 1} ô · chụp ${frame.capture_count || 3} tấm`;
+        }
+        document.querySelectorAll('.frame-item-ipad').forEach((el) => {
+          el.classList.toggle('selected', el.dataset.id === frame.id);
+        });
       }
-      document.querySelectorAll('.frame-item-ipad').forEach((el) => {
-        el.classList.toggle('selected', el.dataset.id === payload.selectedFrame.id);
-      });
     }
 
+    // Progress
     if (payload.captureProgress != null && payload.captureTotal != null) {
       const el = $('#capture-progress');
       if (el) el.textContent = `${payload.captureProgress} / ${payload.captureTotal}`;
     }
 
+    // Photos
     if (payload.allPhotos && Array.isArray(payload.allPhotos)) {
       state.photos = payload.allPhotos;
       renderPhotoPick(payload.allPhotos, payload.needPick || 1);
     }
 
-    if (payload.hashtags && Array.isArray(payload.hashtags)) {
-      renderHashtagList(payload.hashtags);
-    }
-
+    // Selected tags
     if (payload.selectedTags && Array.isArray(payload.selectedTags)) {
       state.selectedTags = payload.selectedTags;
       document.querySelectorAll('.hashtag-ipad').forEach((el) => {
@@ -155,6 +203,7 @@
       });
     }
 
+    // Final result
     if (payload.finalPhotoUrl) {
       showFinalResult(payload.finalPhotoUrl, payload.qrUrl);
     }
@@ -203,15 +252,6 @@
       return;
     }
 
-    if (state.frameCount === frames.length && list.querySelectorAll('.frame-item-ipad').length === frames.length) {
-      document.querySelectorAll('.frame-item-ipad').forEach((el) => {
-        el.classList.toggle('selected', el.dataset.id === state.selectedFrame?.id);
-      });
-      return;
-    }
-
-    state.frameCount = frames.length;
-
     list.innerHTML = frames.map((f) => `
       <div class="frame-item-ipad" data-id="${f.id}">
         <img src="${f.image_url}" loading="lazy" alt="${f.name}" />
@@ -223,7 +263,10 @@
       el.addEventListener('click', () => {
         const id = el.dataset.id;
         RealtimeSync.sendCommand({ action: 'select-frame', frameId: id });
-        toast('Đã chọn khung trên laptop', 'success');
+        // Highlight ngay
+        document.querySelectorAll('.frame-item-ipad').forEach((x) => x.classList.remove('selected'));
+        el.classList.add('selected');
+        toast('Đã chọn khung', 'success');
       });
     });
 
@@ -351,7 +394,7 @@
         setTimeout(() => {
           btnCapture.disabled = false;
           btnCapture.innerHTML = '📸 <span>BẮT ĐẦU CHỤP</span>';
-        }, 15000);
+        }, 20000);
       });
     }
 
