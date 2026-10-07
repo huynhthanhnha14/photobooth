@@ -2,139 +2,50 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>📱 iPad Controller - Photobooth</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>📱 Chuyển hướng...</title>
+  <style>
+    body {
+      background: #0a1628;
+      color: #38bdf8;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+      padding: 20px;
+    }
+    .msg { max-width: 400px; }
+    h1 { color: #fbbf24; font-size: 24px; margin-bottom: 12px; }
+    p { font-size: 14px; line-height: 1.6; opacity: 0.9; }
+    code {
+      background: rgba(6, 182, 212, 0.2);
+      padding: 3px 8px;
+      border-radius: 4px;
+      color: #38bdf8;
+    }
+  </style>
 </head>
-<body class="ipad-layout">
-
-  <!-- SCREEN 1: KẾT NỐI -->
-  <div id="connect-screen" class="connect-screen">
-    <div class="connect-box">
-      <div class="connect-logo">📱</div>
-      <h1>iPad Controller</h1>
-      <p class="connect-desc">Nhập mã phòng hiển thị trên laptop</p>
-
-      <input type="text" id="room-input" class="room-input"
-             placeholder="A1B2C3" maxlength="6" autocomplete="off" />
-
-      <button id="btn-connect" class="btn-main" style="width:100%; justify-content:center;">
-        <span>🔌 Kết nối</span>
-      </button>
-
-      <p id="connect-status" class="connect-status">Chưa kết nối</p>
-
-      <p class="connect-hint">
-        💡 Trên laptop: mở <code>index.html</code> → nhấn <code>📱</code>
-      </p>
-    </div>
+<body>
+  <div class="msg">
+    <h1>⚠️ Đã thay đổi cách kết nối</h1>
+    <p>
+      iPad giờ dùng <code>index.html</code> trực tiếp.<br>
+      Vui lòng mở URL có dạng:<br>
+      <code>index.html?room=XXXXXX</code>
+    </p>
+    <p id="redirect-info" style="margin-top: 20px; font-size: 12px; opacity: 0.6;"></p>
   </div>
-
-  <!-- SCREEN 2: ĐIỀU KHIỂN -->
-  <div id="main-screen" class="main-screen" style="display:none;">
-
-    <header class="ipad-header">
-      <div class="ipad-header-title">📱 iPad Controller</div>
-      <div class="ipad-header-badge" id="room-badge">—</div>
-      <button id="btn-disconnect" class="ipad-btn-small">✕</button>
-    </header>
-
-    <div class="ipad-progress">
-      <div class="progress-step" data-step="1"><span class="progress-num">1</span><span class="progress-label">Khung</span></div>
-      <div class="progress-line"></div>
-      <div class="progress-step" data-step="2"><span class="progress-num">2</span><span class="progress-label">Chụp</span></div>
-      <div class="progress-line"></div>
-      <div class="progress-step" data-step="3"><span class="progress-num">3</span><span class="progress-label">Chọn</span></div>
-      <div class="progress-line"></div>
-      <div class="progress-step" data-step="4"><span class="progress-num">4</span><span class="progress-label">Xem</span></div>
-      <div class="progress-line"></div>
-      <div class="progress-step" data-step="5"><span class="progress-num">5</span><span class="progress-label">QR</span></div>
-    </div>
-
-    <div class="ipad-main">
-
-      <div class="ipad-left">
-        <div class="ipad-video-wrap">
-          <img id="remote-video-img" class="ipad-video" alt="Camera từ laptop" />
-          <div class="ipad-video-badge">🔴 Live</div>
-          <div class="ipad-video-fps" id="video-fps">0 fps</div>
-          <div class="ipad-video-placeholder" id="video-placeholder">
-            <span>📷 Đang chờ camera từ laptop...</span>
-          </div>
-        </div>
-
-        <div class="ipad-info-box">
-          <div class="info-item highlight">
-            <span class="info-label">Khung đang chọn</span>
-            <span class="info-value" id="selected-frame-name">—</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Thông tin</span>
-            <span class="info-value" id="selected-frame-meta">—</span>
-          </div>
-        </div>
-
-        <div class="ipad-capture-info" id="panel-capture" style="display:none;">
-          <div class="ipad-capture-progress">
-            <span class="info-label">Tiến độ</span>
-            <span class="info-value" id="capture-progress">0 / 0</span>
-          </div>
-          <button id="ipad-btn-capture" class="btn-main" style="width:100%; justify-content:center; font-size:16px; padding:16px;">
-            📸 <span>BẮT ĐẦU CHỤP</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="ipad-right">
-
-        <div id="panel-select" class="ipad-panel">
-          <h3 class="ipad-panel-title">🎨 Chọn khung</h3>
-          <div id="ipad-frame-list" class="ipad-frame-list">
-            <p class="loading">Đang chờ laptop...</p>
-          </div>
-          <button id="ipad-btn-continue" class="btn-main" style="width:100%; justify-content:center; margin-top:10px;">
-            Vào chụp ảnh →
-          </button>
-        </div>
-
-        <div id="panel-pick" class="ipad-panel" style="display:none;">
-          <h3 class="ipad-panel-title">✅ Chọn ảnh ưng ý</h3>
-          <div id="ipad-pick-grid" class="ipad-pick-grid"></div>
-          <button id="ipad-btn-picked-continue" class="btn-main" style="width:100%; justify-content:center; margin-top:10px;">
-            Tiếp tục →
-          </button>
-        </div>
-
-        <div id="panel-decorate" class="ipad-panel" style="display:none;">
-          <h3 class="ipad-panel-title">✨ Xem trước</h3>
-          <p class="ipad-hint">Chọn hashtag trên iPad, laptop sẽ tự chèn</p>
-          <div id="ipad-hashtag-list" class="ipad-hashtag-list"></div>
-          <button id="ipad-btn-finalize" class="btn-main" style="width:100%; justify-content:center; margin-top:10px;">
-            📱 Tạo QR
-          </button>
-        </div>
-
-        <div id="panel-result" class="ipad-panel" style="display:none;">
-          <h3 class="ipad-panel-title">🎉 Hoàn tất</h3>
-          <div id="ipad-final-photo" class="ipad-final-photo"></div>
-          <a id="ipad-download-btn" download target="_blank" rel="noreferrer" style="display:block; margin-top:10px; text-decoration:none;">
-            <button class="btn-main" style="width:100%; justify-content:center;">⬇️ Tải ảnh</button>
-          </a>
-          <button id="ipad-btn-restart" class="btn-secondary" style="width:100%; justify-content:center; margin-top:6px;">
-            🔄 Chụp lại
-          </button>
-        </div>
-
-      </div>
-    </div>
-  </div>
-
-  <div id="toast" class="toast"></div>
-
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js"></script>
-  <script src="js/supabase-client.js"></script>
-  <script src="js/realtime-sync.js"></script>
-  <script src="js/ipad-controller.js"></script>
+  <script>
+    // Nếu có ?room=XXXX thì tự chuyển
+    const params = new URLSearchParams(location.search);
+    const room = params.get('room');
+    if (room) {
+      document.getElementById('redirect-info').textContent = 'Đang chuyển hướng...';
+      location.href = 'index.html?room=' + encodeURIComponent(room);
+    }
+  </script>
 </body>
 </html>

@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>📸 KTCN x CNTT Photobooth</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -38,6 +38,7 @@
       <div class="app-title-line1">KTCN × CNTT</div>
       <div class="app-title-line2">Photobooth</div>
     </div>
+    <div class="mode-badge" id="mode-badge" style="display:none;"></div>
     <nav class="app-nav">
       <a href="index.html" class="active">📷</a>
       <a href="admin.html">⚙️</a>
@@ -46,100 +47,84 @@
   </header>
 
   <div class="progress-bar">
-    <div class="progress-step" data-step="1">
-      <span class="progress-num">1</span>
-      <span class="progress-label">Khung</span>
-    </div>
+    <div class="progress-step" data-step="1"><span class="progress-num">1</span><span class="progress-label">Khung</span></div>
     <div class="progress-line"></div>
-    <div class="progress-step" data-step="2">
-      <span class="progress-num">2</span>
-      <span class="progress-label">Chụp</span>
-    </div>
+    <div class="progress-step" data-step="2"><span class="progress-num">2</span><span class="progress-label">Chụp</span></div>
     <div class="progress-line"></div>
-    <div class="progress-step" data-step="3">
-      <span class="progress-num">3</span>
-      <span class="progress-label">Chọn</span>
-    </div>
+    <div class="progress-step" data-step="3"><span class="progress-num">3</span><span class="progress-label">Chọn</span></div>
     <div class="progress-line"></div>
-    <div class="progress-step" data-step="4">
-      <span class="progress-num">4</span>
-      <span class="progress-label">Xem</span>
-    </div>
+    <div class="progress-step" data-step="4"><span class="progress-num">4</span><span class="progress-label">Xem</span></div>
     <div class="progress-line"></div>
-    <div class="progress-step" data-step="5">
-      <span class="progress-num">5</span>
-      <span class="progress-label">QR</span>
-    </div>
+    <div class="progress-step" data-step="5"><span class="progress-num">5</span><span class="progress-label">QR</span></div>
   </div>
 
   <main class="app-main">
 
+    <!-- BƯỚC 1 -->
     <section id="step-select" class="app-step active">
-  <div class="step-sidebar">
-    <h2 class="step-title">Chọn khung</h2>
-    <p class="step-desc">Chọn khung bên phải · Xem trước bên trái</p>
-
-    <div class="sidebar-info">
-      <div class="info-item highlight">
-        <span class="info-label">Khung đã chọn</span>
-        <span class="info-value" id="selected-frame-name">—</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Số ô / Số ảnh chụp</span>
-        <span class="info-value" id="selected-frame-meta">—</span>
-      </div>
-    </div>
-
-    <button id="btn-toggle-camera" class="btn-secondary btn-small" style="width:100%; justify-content:center;">
-      <span id="cam-toggle-icon">📷</span>
-      <span id="cam-toggle-text">Bật camera</span>
-    </button>
-
-    <p class="step-desc" style="font-size: 11px; opacity: 0.7;">
-      💡 Đứng vào khung để xem trước.
-    </p>
-  </div>
-
-  <div class="step-content select-layout">
-    <!-- ⭐ PREVIEW BÊN TRÁI (THU HẸP) -->
-    <div class="preview-area">
-      <div class="camera-preview-box" id="camera-preview-box">
-        <video id="preview-video" autoplay playsinline muted></video>
-        <img id="preview-frame-overlay" class="preview-frame-overlay" alt="" />
-        <img id="preview-text-overlay" class="preview-text-overlay" alt="" />
-        <div class="preview-placeholder" id="preview-placeholder">
-          <span>Chọn khung</span>
-          <span style="font-size: 12px; opacity: 0.7;">để xem trước</span>
+      <div class="step-sidebar">
+        <h2 class="step-title">Chọn khung</h2>
+        <p class="step-desc">Chọn khung bên phải · Xem trước bên trái</p>
+        <div class="sidebar-info">
+          <div class="info-item highlight">
+            <span class="info-label">Khung đã chọn</span>
+            <span class="info-value" id="selected-frame-name">—</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Số ô / Số ảnh chụp</span>
+            <span class="info-value" id="selected-frame-meta">—</span>
+          </div>
         </div>
-        <div class="camera-status" id="camera-status">
-          <span class="status-dot"></span>
-          <span id="camera-status-text">Camera đang tắt</span>
+        <button id="btn-toggle-camera" class="btn-secondary btn-small" style="width:100%; justify-content:center;">
+          <span id="cam-toggle-icon">📷</span>
+          <span id="cam-toggle-text">Bật camera</span>
+        </button>
+        <button id="btn-switch-camera" class="btn-secondary btn-small" style="width:100%; justify-content:center; display:none;">
+          <span>🔄</span>
+          <span id="switch-cam-text">Đổi camera</span>
+        </button>
+        <p class="step-desc" style="font-size: 11px; opacity: 0.7;">
+          💡 Đứng vào khung để xem trước. Nhấn 🔍 để xem to.
+        </p>
+      </div>
+
+      <div class="step-content select-layout">
+        <div class="preview-area">
+          <div class="camera-preview-box" id="camera-preview-box">
+            <video id="preview-video" autoplay playsinline muted></video>
+            <img id="preview-frame-overlay" class="preview-frame-overlay" alt="" />
+            <img id="preview-text-overlay" class="preview-text-overlay" alt="" />
+            <div class="preview-placeholder" id="preview-placeholder">
+              <span>👈 Chọn khung</span>
+              <span style="font-size: 12px; opacity: 0.7;">để xem trước</span>
+            </div>
+            <div class="camera-status" id="camera-status">
+              <span class="status-dot"></span>
+              <span id="camera-status-text">Camera đang tắt</span>
+            </div>
+            <button id="btn-zoom-preview" class="btn-zoom-preview" title="Phóng to">
+              <span id="zoom-icon">🔍</span>
+            </button>
+          </div>
+          <p class="preview-hint">👆 Đổi khung nếu chưa vừa · 🔍 để xem lớn</p>
         </div>
 
-        <!-- ⭐ Nút zoom -->
-        <button id="btn-zoom-preview" class="btn-zoom-preview" title="Phóng to ảnh">
-          <span id="zoom-icon">🔍</span>
+        <div class="frame-list-area">
+          <div id="frame-list" class="frame-grid-compact">
+            <p class="loading">Đang tải khung...</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-footer">
+        <button id="btn-continue" disabled class="btn-main">
+          <span>Vào chụp ảnh</span>
+          <span class="btn-arrow">→</span>
         </button>
       </div>
-      <p class="preview-hint">👆 Đổi khung nếu chưa vừa</p>
-    </div>
+    </section>
 
-    <!-- FRAME LIST BÊN PHẢI -->
-    <div class="frame-list-area">
-      <div id="frame-list" class="frame-grid-compact">
-        <p class="loading">Đang tải khung...</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="step-footer">
-    <button id="btn-continue" disabled class="btn-main">
-      <span>Vào chụp ảnh</span>
-      <span class="btn-arrow">→</span>
-    </button>
-  </div>
-</section>
-
+    <!-- BƯỚC 2 -->
     <section id="step-capture" class="app-step">
       <div class="step-sidebar">
         <h2 class="step-title">Chụp ảnh</h2>
@@ -157,13 +142,11 @@
         <div class="shots-mini" id="shots-preview"></div>
       </div>
       <div class="step-content center">
-<div class="camera-frame">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="capture-guide-canvas" class="capture-guide-canvas"></canvas>
-  <canvas id="pose-overlay" class="pose-overlay"></canvas>
-  <div id="countdown" class="countdown"></div>
-  <div class="camera-corners"><span></span><span></span><span></span><span></span></div>
-</div>
+        <div class="camera-frame">
+          <video id="video" autoplay playsinline muted></video>
+          <div id="countdown" class="countdown"></div>
+          <div class="camera-corners"><span></span><span></span><span></span><span></span></div>
+        </div>
       </div>
       <div class="step-footer">
         <button id="btn-back-1" class="btn-secondary">← Quay lại</button>
@@ -174,6 +157,7 @@
       </div>
     </section>
 
+    <!-- BƯỚC 3 -->
     <section id="step-pick" class="app-step">
       <div class="step-sidebar">
         <h2 class="step-title">Chọn ảnh</h2>
@@ -201,86 +185,72 @@
       </div>
     </section>
 
+    <!-- BƯỚC 4 -->
     <section id="step-decorate" class="app-step">
-  <div class="step-sidebar">
-    <h2 class="step-title">Xem trước</h2>
-    <p class="step-desc">✨ AI đã tự điều chỉnh màu</p>
-
-    <div class="sidebar-info">
-      <div class="info-item">
-        <span class="info-label">Ảnh gốc</span>
-        <div class="original-thumbs" id="photos-preview"></div>
+      <div class="step-sidebar">
+        <h2 class="step-title">Xem trước</h2>
+        <p class="step-desc">✨ AI đã tự điều chỉnh màu</p>
+        <div class="sidebar-info">
+          <div class="info-item">
+            <span class="info-label">Ảnh gốc</span>
+            <div class="original-thumbs" id="photos-preview"></div>
+          </div>
+        </div>
+        <div class="hashtag-section-side">
+          <span class="info-label">Hashtag</span>
+          <div id="hashtag-list" class="hashtag-list"></div>
+        </div>
+        <div class="tune-panel">
+          <div class="tune-title">🎨 Chỉnh hashtag</div>
+          <label class="admin-label">Vị trí</label>
+          <div class="pos-grid" id="tune-pos-grid">
+            <button class="pos-btn" data-pos="top-left">↖</button>
+            <button class="pos-btn" data-pos="top-center">⬆</button>
+            <button class="pos-btn" data-pos="top-right">↗</button>
+            <button class="pos-btn" data-pos="center">⏺</button>
+            <button class="pos-btn active" data-pos="bottom-center">⬇</button>
+            <button class="pos-btn" data-pos="bottom-left">↙</button>
+            <button class="pos-btn" data-pos="bottom-right">↘</button>
+          </div>
+          <label class="admin-label">Cỡ chữ: <span id="tune-size-val">32</span>px</label>
+          <input type="range" id="tune-size" min="16" max="80" value="32" />
+          <label class="admin-label">Xoay: <span id="tune-rotate-val">0</span>°</label>
+          <input type="range" id="tune-rotate" min="-180" max="180" value="0" />
+          <label class="admin-label">Màu chữ</label>
+          <div class="color-row" id="tune-color-row">
+            <button class="color-btn active" data-color="#38bdf8" style="background:#38bdf8" title="CNTT"></button>
+            <button class="color-btn" data-color="#fbbf24" style="background:#fbbf24" title="KTCN"></button>
+            <button class="color-btn" data-color="#ffffff" style="background:#ffffff" title="Trắng"></button>
+            <button class="color-btn" data-color="#10b981" style="background:#10b981" title="Xanh lá"></button>
+            <button class="color-btn" data-color="#ef4444" style="background:#ef4444" title="Đỏ"></button>
+            <button class="color-btn" data-color="#0a1628" style="background:#0a1628" title="Đen"></button>
+            <input type="color" id="tune-color-custom" value="#38bdf8" />
+          </div>
+          <button id="tune-reset" class="btn-secondary btn-small" style="width:100%; justify-content:center; margin-top:6px;">
+            🔄 Về mặc định
+          </button>
+        </div>
       </div>
-    </div>
+      <div class="step-content center">
+        <div id="combined-preview-wrap" class="preview-compact loading-preview">
+          <div class="spinner"></div>
+          <p>AI đang xử lý...</p>
+        </div>
+      </div>
+      <div class="step-footer">
+        <button id="btn-back-2" class="btn-secondary">← Chọn lại</button>
+        <button id="btn-finalize" class="btn-main">
+          <span>Tạo QR</span>
+          <span class="btn-icon">📱</span>
+        </button>
+      </div>
+    </section>
 
-    <div class="hashtag-section-side">
-      <span class="info-label">Hashtag</span>
-      <div id="hashtag-list" class="hashtag-list"></div>
-    </div>
-
-    <!-- ⭐ PANEL ĐIỀU CHỈNH HASHTAG -->
-    <div class="tune-panel">
-  <div class="tune-title">🎨 Chỉnh hashtag</div>
-
-  <label class="admin-label">Vị trí</label>
-  <div class="pos-grid" id="tune-pos-grid">
-    <button class="pos-btn" data-pos="top-left">↖</button>
-    <button class="pos-btn" data-pos="top-center">⬆</button>
-    <button class="pos-btn" data-pos="top-right">↗</button>
-    <button class="pos-btn" data-pos="center">⏺</button>
-    <button class="pos-btn active" data-pos="bottom-center">⬇</button>
-    <button class="pos-btn" data-pos="bottom-left">↙</button>
-    <button class="pos-btn" data-pos="bottom-right">↘</button>
-  </div>
-
-  <label class="admin-label">
-    Cỡ chữ: <span id="tune-size-val">32</span>px
-  </label>
-  <input type="range" id="tune-size" min="16" max="80" value="32" />
-
-  <!-- ⭐ XOAY HASHTAG -->
-  <label class="admin-label">
-    Xoay: <span id="tune-rotate-val">0</span>°
-  </label>
-  <input type="range" id="tune-rotate" min="-180" max="180" value="0" />
-
-  <label class="admin-label">Màu chữ</label>
-  <div class="color-row" id="tune-color-row">
-    <button class="color-btn active" data-color="#38bdf8" style="background:#38bdf8" title="CNTT"></button>
-    <button class="color-btn" data-color="#fbbf24" style="background:#fbbf24" title="KTCN"></button>
-    <button class="color-btn" data-color="#ffffff" style="background:#ffffff" title="Trắng"></button>
-    <button class="color-btn" data-color="#10b981" style="background:#10b981" title="Xanh lá"></button>
-    <button class="color-btn" data-color="#ef4444" style="background:#ef4444" title="Đỏ"></button>
-    <button class="color-btn" data-color="#0a1628" style="background:#0a1628" title="Đen"></button>
-    <input type="color" id="tune-color-custom" value="#38bdf8" />
-  </div>
-
-  <button id="tune-reset" class="btn-secondary btn-small" style="width:100%; justify-content:center; margin-top:6px;">
-    🔄 Về mặc định
-  </button>
-</div>
-  </div>
-
-  <div class="step-content center">
-    <div id="combined-preview-wrap" class="preview-compact loading-preview">
-      <div class="spinner"></div>
-      <p>AI đang xử lý...</p>
-    </div>
-  </div>
-
-  <div class="step-footer">
-    <button id="btn-back-2" class="btn-secondary">← Chọn lại</button>
-    <button id="btn-finalize" class="btn-main">
-      <span>Tạo QR</span>
-      <span class="btn-icon">📱</span>
-    </button>
-  </div>
-</section>
-
+    <!-- BƯỚC 5 -->
     <section id="step-result" class="app-step">
       <div class="step-sidebar">
         <h2 class="step-title">Hoàn tất</h2>
-        <p class="step-desc">Quét QR để tải ảnh</p>
+        <p class="step-desc">Quét QR hoặc điền thông tin</p>
         <div class="sidebar-info">
           <div class="info-item">
             <span class="info-label">Ảnh gốc</span>
@@ -289,16 +259,44 @@
         </div>
       </div>
       <div class="step-content result-layout">
-        <div id="result-preview-wrap" class="preview-compact"></div>
-        <div class="qr-panel">
-          <img id="qr-combined" alt="QR" />
-          <div class="qr-actions">
-            <a id="btn-view-combined" target="_blank" rel="noreferrer">
-              <button class="btn-small">Xem</button>
-            </a>
-            <a id="btn-download-combined" download target="_blank" rel="noreferrer">
-              <button class="btn-small">Tải</button>
-            </a>
+        <div class="qr-big-wrap">
+          <div class="qr-big-panel">
+            <div class="qr-big-title">📱 Quét QR để tải ảnh</div>
+            <img id="qr-combined" alt="QR" class="qr-big-img" />
+            <div class="qr-big-actions">
+              <a id="btn-view-combined" target="_blank" rel="noreferrer">
+                <button class="btn-small">👁 Xem ảnh</button>
+              </a>
+              <a id="btn-download-combined" download target="_blank" rel="noreferrer">
+                <button class="btn-small">⬇ Tải ảnh</button>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="info-form-wrap">
+          <div class="info-form-title">📝 Thông tin của bạn</div>
+          <p class="info-form-desc">Điền để lưu ảnh kèm thông tin</p>
+          <div class="info-form">
+            <div class="form-field">
+              <label>MSSV <span class="req">*</span></label>
+              <input type="text" id="result-mssv" placeholder="VD: 22520001" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label>Họ tên <span class="req">*</span></label>
+              <input type="text" id="result-name" placeholder="VD: Nguyễn Văn A" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label>Quê quán</label>
+              <input type="text" id="result-hometown" placeholder="VD: Bình Dương" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label>Năm sinh</label>
+              <input type="text" id="result-birthyear" placeholder="VD: 2004" autocomplete="off" maxlength="4" inputmode="numeric" />
+            </div>
+            <button id="btn-save-info" class="btn-main btn-full" style="margin-top:8px;">
+              <span>💾 Lưu thông tin</span>
+            </button>
+            <p id="info-save-status" class="info-save-status"></p>
           </div>
         </div>
       </div>
@@ -313,6 +311,20 @@
     <div id="toast" class="toast"></div>
   </main>
 
+  <!-- MODAL QR -->
+  <div id="ipad-pair-modal" class="ipad-pair-modal">
+    <button class="ipad-pair-close">✕</button>
+    <div class="ipad-pair-content">
+      <h2>📱 Kết nối iPad</h2>
+      <p>Mở <code>index.html?room=XXXXXX</code> trên iPad</p>
+      <div class="ipad-room-code" id="ipad-room-code">------</div>
+      <div class="ipad-pair-qr"><img id="ipad-pair-qr-img" alt="QR" /></div>
+      <p class="ipad-pair-hint">💡 Hoặc quét QR để tự động kết nối</p>
+      <div class="ipad-pair-status" id="ipad-pair-status">⏳ Đang chờ iPad kết nối...</div>
+    </div>
+  </div>
+
+  <!-- MODAL KHUNG -->
   <div id="frame-preview-modal" class="frame-preview-modal">
     <button class="frame-preview-close">✕</button>
     <div class="frame-preview-content">
@@ -325,9 +337,7 @@
         </div>
       </div>
       <div class="frame-preview-image-wrap">
-        <div class="fp-checkerboard">
-          <img id="fp-image" alt="Preview khung" />
-        </div>
+        <div class="fp-checkerboard"><img id="fp-image" alt="Preview khung" /></div>
       </div>
       <div class="frame-preview-actions">
         <button id="fp-select-btn" class="btn-main">Chọn khung này →</button>
@@ -336,6 +346,7 @@
     </div>
   </div>
 
+  <!-- ZOOM -->
   <div id="zoom-modal" class="zoom-modal">
     <button class="zoom-close">✕</button>
     <button class="zoom-prev">‹</button>
@@ -343,37 +354,18 @@
     <button class="zoom-next">›</button>
     <div class="zoom-info"><span id="zoom-caption"></span></div>
   </div>
-<!-- ⭐ MODAL QR CODE ĐỂ iPAD KẾT NỐI -->
-<div id="ipad-pair-modal" class="ipad-pair-modal">
-  <button class="ipad-pair-close">✕</button>
-  <div class="ipad-pair-content">
-    <h2>📱 Kết nối iPad</h2>
-    <p>Mở <code>ipad.html</code> trên iPad và nhập mã phòng:</p>
 
-    <div class="ipad-room-code" id="ipad-room-code">------</div>
-
-    <div class="ipad-pair-qr">
-      <img id="ipad-pair-qr-img" alt="QR" />
-    </div>
-
-    <p class="ipad-pair-hint">
-      💡 Hoặc quét QR để tự động kết nối
-    </p>
-
-    <div class="ipad-pair-status" id="ipad-pair-status">
-      ⏳ Đang chờ iPad kết nối...
-    </div>
-  </div>
-</div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
   <script src="js/camera.js"></script>
   <script src="js/image-enhancer.js"></script>
+  <script src="js/shape-generator.js"></script>
+  <script src="js/pose-library.js"></script>
   <script src="js/frame-generator.js"></script>
   <script src="js/zoom.js"></script>
-  <script src="js/app.js"></script>
   <script src="js/realtime-sync.js"></script>
-
+  <script src="js/webrtc-stream.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

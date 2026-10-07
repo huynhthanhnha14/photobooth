@@ -1,5 +1,5 @@
 // ============================================
-// REALTIME SYNC — Laptop ↔ iPad
+// REALTIME SYNC — Laptop ↔ iPad (chỉ signaling + state)
 // ============================================
 window.RealtimeSync = (function () {
   let channel = null;
@@ -9,71 +9,50 @@ window.RealtimeSync = (function () {
 
   function connect(rid, r) {
     if (channel) disconnect();
-
     roomId = rid;
     role = r;
 
-    console.log(`[RealtimeSync] Đang connect room=${rid}, role=${r}`);
+    console.log(`[RealtimeSync] Connect room=${rid}, role=${r}`);
 
     channel = window.supabaseClient.channel(`booth-${roomId}`, {
-      config: {
-        broadcast: { self: false, ack: false },
-      },
+      config: { broadcast: { self: false, ack: false } },
     });
 
     channel
-      .on('broadcast', { event: 'state' }, (payload) => {
-        if (handlers.onState) handlers.onState(payload.payload);
-      })
-      .on('broadcast', { event: 'command' }, (payload) => {
-        if (handlers.onCommand) handlers.onCommand(payload.payload);
-      })
-      .on('broadcast', { event: 'video' }, (payload) => {
-        if (handlers.onVideo) handlers.onVideo(payload.payload);
-      })
-      .on('broadcast', { event: 'pair' }, (payload) => {
-        if (handlers.onPair) handlers.onPair(payload.payload);
-      });
+      .on('broadcast', { event: 'state' }, (p) => handlers.onState && handlers.onState(p.payload))
+      .on('broadcast', { event: 'command' }, (p) => handlers.onCommand && handlers.onCommand(p.payload))
+      .on('broadcast', { event: 'video' }, (p) => handlers.onVideo && handlers.onVideo(p.payload))
+      .on('broadcast', { event: 'pair' }, (p) => handlers.onPair && handlers.onPair(p.payload));
 
     return channel.subscribe((status, err) => {
-      console.log(`[RealtimeSync] Status: ${status}`, err || '');
+      console.log(`[RealtimeSync] ${status}`, err || '');
       if (status === 'SUBSCRIBED' && handlers.onConnect) handlers.onConnect();
-      if (status === 'CHANNEL_ERROR') {
-        console.error('[RealtimeSync] Lỗi channel:', err);
-      }
     });
   }
 
   function disconnect() {
-    if (channel) {
-      try { channel.unsubscribe(); } catch (e) {}
-      channel = null;
-    }
+    if (channel) { try { channel.unsubscribe(); } catch (e) {} channel = null; }
     roomId = null;
   }
 
   function sendState(data) {
     if (!channel) return;
-    channel.send({ type: 'broadcast', event: 'state', payload: data })
-      .catch((err) => console.warn('[RealtimeSync] sendState lỗi:', err));
+    channel.send({ type: 'broadcast', event: 'state', payload: data }).catch(() => {});
   }
 
   function sendCommand(data) {
     if (!channel) return;
-    channel.send({ type: 'broadcast', event: 'command', payload: data })
-      .catch((err) => console.warn('[RealtimeSync] sendCommand lỗi:', err));
+    channel.send({ type: 'broadcast', event: 'command', payload: data }).catch(() => {});
   }
 
   function sendVideo(data) {
     if (!channel) return;
-    // Không catch lỗi để tránh spam console
     channel.send({ type: 'broadcast', event: 'video', payload: data }).catch(() => {});
   }
 
   function sendPair(data) {
     if (!channel) return;
-    channel.send({ type: 'broadcast', event: 'pair', payload: data })
-      .catch((err) => console.warn('[RealtimeSync] sendPair lỗi:', err));
+    channel.send({ type: 'broadcast', event: 'pair', payload: data }).catch(() => {});
   }
 
   function genRoomId() {
@@ -84,14 +63,10 @@ window.RealtimeSync = (function () {
   }
 
   return {
-    connect,
-    disconnect,
-    sendState,
-    sendCommand,
-    sendVideo,
-    sendPair,
+    connect, disconnect,
+    sendState, sendCommand, sendVideo, sendPair,
     genRoomId,
-    on: (event, cb) => { handlers[event] = cb; },
+    on: (e, cb) => { handlers[e] = cb; },
     getRoomId: () => roomId,
     getRole: () => role,
   };
