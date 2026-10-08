@@ -131,14 +131,17 @@
     btn.disabled = true;
     btn.textContent = 'Đang lưu...';
 
-    const { error } = await supabase.from('frames').insert([{
-      name,
-      image_url: pendingFrameDataUrl,
-      text_overlay_url: pendingTextOverlayDataUrl || '',
-      layout, photo_count, capture_count,
-      hashtag_x: hx, hashtag_y: hy, hashtag_size: size, hashtag_color: color,
-      shape_type, shape_value, shape_scale: 100, pose_id,
-    }]);
+    const textRemoveBg = document.getElementById('frame-text-remove-bg')?.checked ?? true;
+
+const { error } = await supabase.from('frames').insert([{
+  name,
+  image_url: pendingFrameDataUrl,
+  text_overlay_url: pendingTextOverlayDataUrl || '',
+  text_remove_bg: textRemoveBg ? 1 : 0,   // ⭐ THÊM DÒNG NÀY
+  layout, photo_count, capture_count,
+  hashtag_x: hx, hashtag_y: hy, hashtag_size: size, hashtag_color: color,
+  shape_type, shape_value, shape_scale: 100, pose_id,
+}]);
 
     btn.disabled = false;
     btn.textContent = '➕ Thêm khung';
@@ -155,6 +158,9 @@
     $('#frame-pose').value = '';
     pendingFrameDataUrl = null;
     pendingTextOverlayDataUrl = null;
+
+    const _cbRemove = document.getElementById('frame-text-remove-bg');
+if (_cbRemove) _cbRemove.checked = true;
     loadFrames();
   });
 

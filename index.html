@@ -83,9 +83,9 @@
           <span>🔄</span>
           <span id="switch-cam-text">Đổi camera</span>
         </button>
-        <p class="step-desc" style="font-size: 11px; opacity: 0.7;">
+        <!-- <p class="step-desc" style="font-size: 11px; opacity: 0.7;">
           💡 Đứng vào khung để xem trước. Nhấn 🔍 để xem to.
-        </p>
+        </p> -->
       </div>
 
       <div class="step-content select-layout">
@@ -95,7 +95,7 @@
             <img id="preview-frame-overlay" class="preview-frame-overlay" alt="" />
             <img id="preview-text-overlay" class="preview-text-overlay" alt="" />
             <div class="preview-placeholder" id="preview-placeholder">
-              <span>👈 Chọn khung</span>
+              <span>Chọn khung</span>
               <span style="font-size: 12px; opacity: 0.7;">để xem trước</span>
             </div>
             <div class="camera-status" id="camera-status">
@@ -106,7 +106,7 @@
               <span id="zoom-icon">🔍</span>
             </button>
           </div>
-          <p class="preview-hint">👆 Đổi khung nếu chưa vừa · 🔍 để xem lớn</p>
+          <!-- <p class="preview-hint">👆 Đổi khung nếu chưa vừa · 🔍 để xem lớn</p> -->
         </div>
 
         <div class="frame-list-area">
@@ -273,7 +273,7 @@
             </div>
           </div>
         </div>
-        <div class="info-form-wrap">
+        <!-- <div class="info-form-wrap">
           <div class="info-form-title">📝 Thông tin của bạn</div>
           <p class="info-form-desc">Điền để lưu ảnh kèm thông tin</p>
           <div class="info-form">
@@ -298,7 +298,7 @@
             </button>
             <p id="info-save-status" class="info-save-status"></p>
           </div>
-        </div>
+        </div> -->
       </div>
       <div class="step-footer">
         <button id="btn-restart" class="btn-main">
@@ -310,7 +310,40 @@
 
     <div id="toast" class="toast"></div>
   </main>
+<!-- ⭐ MODAL NHẬP THÔNG TIN TRƯỚC KHI TẠO QR -->
+<div id="info-modal" class="info-modal">
+  <div class="info-modal-content">
+    <div class="info-modal-icon">📝</div>
+    <h2 class="info-modal-title">Thông tin của bạn</h2>
+    <p class="info-modal-desc">Điền để lưu ảnh kèm thông tin cá nhân</p>
 
+    <div class="info-modal-form">
+      <div class="form-field">
+        <label>MSSV <span class="req">*</span></label>
+        <input type="text" id="modal-mssv" placeholder="VD: 22520001" autocomplete="off" />
+      </div>
+      <div class="form-field">
+        <label>Họ tên <span class="req">*</span></label>
+        <input type="text" id="modal-name" placeholder="VD: Nguyễn Văn A" autocomplete="off" />
+      </div>
+      <div class="form-field">
+        <label>Năm sinh</label>
+        <input type="text" id="modal-birthyear" placeholder="VD: 2004" maxlength="4" inputmode="numeric" autocomplete="off" />
+      </div>
+
+      <p id="info-modal-status" class="info-save-status"></p>
+
+      <div class="info-modal-actions">
+        <button type="button" id="info-modal-cancel" class="btn-secondary">
+          <span>← Quay lại</span>
+        </button>
+        <button type="button" id="info-modal-submit" class="btn-main">
+          <span>📱 Tạo QR</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
   <!-- MODAL QR -->
   <div id="ipad-pair-modal" class="ipad-pair-modal">
     <button class="ipad-pair-close">✕</button>
@@ -367,5 +400,42 @@
   <script src="js/realtime-sync.js"></script>
   <script src="js/webrtc-stream.js"></script>
   <script src="js/app.js"></script>
+
+  <script>
+  (function () {
+    console.log('[SidebarToggle] script loaded');
+    function updateIcons() {
+      var c = document.body.classList.contains('sidebar-collapsed');
+      document.querySelectorAll('.sidebar-toggle-btn').forEach(function (b) {
+        b.textContent = c ? '▶' : '◀';
+      });
+    }
+    function init() {
+      var sbs = document.querySelectorAll('.step-sidebar');
+      console.log('[SidebarToggle] sidebars found:', sbs.length);
+      sbs.forEach(function (sb) {
+        if (sb.querySelector('.sidebar-toggle-btn')) return;
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'sidebar-toggle-btn';
+        b.textContent = '◀';
+        b.addEventListener('click', function (e) {
+          e.stopPropagation();
+          document.body.classList.toggle('sidebar-collapsed');
+          updateIcons();
+        });
+        sb.appendChild(b);
+      });
+      updateIcons();
+      console.log('[SidebarToggle] buttons injected:',
+        document.querySelectorAll('.sidebar-toggle-btn').length);
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+  </script>
 </body>
 </html>

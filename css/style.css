@@ -398,15 +398,16 @@ body::after {
 }
 
 .camera-preview-box video {
-  /* position: absolute; */
+  position: absolute;          /* BẬT LÊN */
   top: 0; left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1);
   z-index: 1;
-  background: #000;
 }
+
+
 
 .preview-frame-overlay {
   position: absolute;
@@ -432,7 +433,7 @@ body::after {
 }
 
 .preview-placeholder {
-  /* position: absolute; */
+  position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
@@ -469,6 +470,7 @@ body::after {
   color: var(--tech-white);
   z-index: 6;
   border: 1px solid rgba(56, 189, 248, 0.3);
+  display: none;
 }
 .status-dot {
   width: 8px;
@@ -543,6 +545,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  
 }
 button:hover:not(:disabled) {
   border-color: var(--tech-gold);
@@ -884,10 +887,11 @@ select { cursor: pointer; }
    RESULT (STEP 5)
    ============================================ */
 .result-layout {
-  display: grid;
+  display: flex;
   grid-template-columns: 1fr 240px;
   gap: 20px;
   align-items: center;
+  justify-content: center;
 }
 .qr-panel {
   display: flex;
@@ -1427,7 +1431,77 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 1100px) {
   :root { --sidebar-w: 240px; }
   .select-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .camera-preview-box { max-height: 42vh; height: auto; }
+  .camera-preview-box { max-height: 60vh; height: 883px; }
+  /* ============================================
+   ⭐ SIDEBAR TOGGLE — Thu gọn/Mở rộng step-sidebar
+   ============================================ */
+.step-sidebar {
+  position: relative;
+  transition: padding 0.3s ease;
+}
+
+.app-step {
+  transition: grid-template-columns 0.3s ease;
+}
+
+.sidebar-toggle-btn {
+  position: absolute;
+  top: 22px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1.5px solid var(--tech-cyan);
+  color: var(--tech-cyan);
+  font-size: 13px;
+  font-weight: 900;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 20;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  line-height: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.sidebar-toggle-btn:hover {
+  background: var(--tech-cyan);
+  color: var(--tech-dark);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+}
+
+/* Trạng thái thu gọn */
+body.sidebar-collapsed {
+  --sidebar-w: 48px;
+}
+
+body.sidebar-collapsed .step-sidebar {
+  padding: 8px 4px;
+  align-items: center;
+  gap: 0;
+}
+
+body.sidebar-collapsed .step-sidebar > *:not(.sidebar-toggle-btn) {
+  display: none !important;
+}
+
+body.sidebar-collapsed .sidebar-toggle-btn {
+  left: 6px;
+  right: 6px;
+  width: auto;
+  height: 34px;
+  font-size: 14px;
+}
+
+/* iPad mirror mode — cũng kế thừa tự động nhờ body.sidebar-collapsed */
+
+/* Ẩn nút trên mobile rất nhỏ (sidebar dạng thanh ngang rồi) */
+@media (max-width: 480px) {
+  .sidebar-toggle-btn { display: none; }
+}
 }
 
 /* iPad Air portrait 820×1180 */
@@ -1931,6 +2005,17 @@ input[type="range"]::-moz-range-thumb {
   flex: 1;
   min-height: 0;
 }
+
+/* ⭐ CHUẨN HOÁ LAYER ORDER — Camera → Frame → Text */
+.camera-preview-box {
+  isolation: isolate;                 /* tạo stacking context riêng */
+}
+.camera-preview-box video           { z-index: 1 !important; }
+.camera-preview-box .preview-frame-overlay { z-index: 3 !important; }
+.camera-preview-box .preview-text-overlay  { z-index: 5 !important; }
+.camera-preview-box .preview-placeholder   { z-index: 4 !important; }
+.camera-preview-box .camera-status,
+.camera-preview-box .btn-zoom-preview      { z-index: 10 !important; }
 
 .pick-item-ipad {
   position: relative;
@@ -3253,4 +3338,176 @@ input[type="range"]::-moz-range-thumb {
   body.mode-ipad .camera-preview-box { max-height: 40vh; }
   body.mode-ipad .result-layout { grid-template-columns: 1fr; }
   body.mode-ipad .qr-big-img { max-width: 200px; }
+}
+
+/* ============================================
+   ⭐ INFO MODAL — Nhập thông tin trước khi tạo QR
+   ============================================ */
+.info-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 10, 20, 0.92);
+  backdrop-filter: blur(12px);
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.info-modal.active {
+  display: flex;
+  animation: fadeIn 0.25s ease;
+}
+
+.info-modal-content {
+  background: linear-gradient(135deg, #0d1b3e 0%, #0a1628 100%);
+  border: 3px solid var(--tech-gold);
+  border-radius: 20px;
+  padding: 32px 28px 28px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.85),
+    0 0 50px rgba(251, 191, 36, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+.info-modal-content::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--tech-gold), var(--tech-cyan), var(--tech-gold));
+}
+
+.info-modal-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 0 20px rgba(251, 191, 36, 0.6));
+}
+
+.info-modal-title {
+  color: var(--tech-gold);
+  font-size: 22px;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  text-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
+}
+
+.info-modal-desc {
+  color: var(--tech-sky);
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 22px;
+  opacity: 0.85;
+}
+
+.info-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.info-modal-form .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.info-modal-form .form-field label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--tech-sky);
+  opacity: 0.9;
+}
+.info-modal-form .form-field label .req {
+  color: var(--tech-gold);
+  font-size: 14px;
+}
+.info-modal-form input {
+  padding: 14px 16px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 2px solid rgba(56, 189, 248, 0.3);
+  background: rgba(10, 22, 40, 0.85);
+  color: var(--tech-white);
+  outline: none;
+  transition: 0.2s;
+  width: 100%;
+}
+.info-modal-form input:focus {
+  border-color: var(--tech-cyan);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+}
+.info-modal-form input.error {
+  border-color: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+  animation: shake 0.3s;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.info-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.info-modal-actions button {
+  flex: 1;
+  justify-content: center;
+  padding: 14px 20px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+/* iPad — Modal to hơn, dễ chạm */
+@media (max-width: 900px) {
+  .info-modal-content {
+    padding: 28px 22px 22px;
+    max-width: 100%;
+  }
+  .info-modal-form input {
+    padding: 16px 18px;
+    font-size: 18px;
+  }
+  .info-modal-actions button {
+    padding: 16px 20px;
+    font-size: 16px;
+  }
+}
+
+.text-remove-bg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1.5px dashed rgba(251, 191, 36, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--tech-gold);
+  user-select: none;
+  transition: 0.2s;
+}
+.text-remove-bg-row:hover {
+  background: rgba(251, 191, 36, 0.2);
+  border-color: var(--tech-gold);
+}
+.text-remove-bg-row input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--tech-gold);
+  flex-shrink: 0;
 }

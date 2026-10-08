@@ -330,6 +330,48 @@ function smartClearShape(frameCtx, mask, W, H) {
   }
 }
 
+// ============================================
+// ⭐ XÓA NỀN SÁNG của PNG chữ — chỉ giữ pixel chữ đậm
+// ============================================
+function removeLightBackgroundFromImage(img) {
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+
+  try {
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+
+      // Đã trong suốt sẵn → bỏ qua
+      if (a < 50) continue;
+
+      // Pixel trắng tinh (nền)
+      const isWhite = r > 235 && g > 235 && b > 235;
+
+      // Pixel xám nhạt (anti-alias viền nền)
+      const isLightGray = Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r > 200;
+
+      // Pixel hơi vàng nhạt (nền kem)
+      const isCream = r > 230 && g > 225 && b > 200 && (r - b) < 35;
+
+      if (isWhite || isLightGray || isCream) {
+        d[i + 3] = 0; // Xóa alpha
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+  } catch (e) {
+    console.warn('[Text Remove BG] Lỗi:', e);
+  }
+  return c;
+}
+
 window.generatePhotoStrip = function (frameUrl, userPhotos, layout = 'auto', options = {}) {
   return new Promise((resolve, reject) => {
     const frameImg = new Image();
@@ -348,6 +390,7 @@ window.generatePhotoStrip = function (frameUrl, userPhotos, layout = 'auto', opt
         const W = canvas.width;
         const H = canvas.height;
 
+        // ⭐ Enhance ảnh user
         const enhancedPhotos = [];
         for (let i = 0; i < userPhotos.length; i++) {
           const enhanced = await window.ImageEnhancer.enhancePhoto(userPhotos[i]);
@@ -367,13 +410,12 @@ window.generatePhotoStrip = function (frameUrl, userPhotos, layout = 'auto', opt
           img.onerror = res;
         })));
 
+        // ⭐ Tính slot
         const shapeType = options.shapeType || 'rect';
         const shapeValue = options.shapeValue || '';
         let finalSlots = [];
-        let isShapeMode = false;
 
         if (shapeType !== 'rect' && window.ShapeGenerator) {
-          isShapeMode = true;
           const shapeSlots = window.ShapeGenerator.generateSlots(shapeType, shapeValue, photoImgs.length);
           finalSlots = shapeSlots.map((s) => ({
             x: s.x * W, y: s.y * H,
@@ -404,46 +446,71 @@ window.generatePhotoStrip = function (frameUrl, userPhotos, layout = 'auto', opt
           }
         }
 
-        // ⭐ Bước 1: Vẽ ảnh user vào slot
+        // ═══════════════════════════════════════════════
+        // ⭐ BƯỚC 1: Vẽ FRAME trước (dưới cùng)
+        //    Nếu clearSlot=true → xóa cứng vùng slot để tạo lỗ trong suốt
+        // ═══════════════════════════════════════════════
+        if (options.clearSlot) {
+          const frameCanvas = document.createElement('canvas');
+          frameCanvas.width = W;
+          frameCanvas.height = H;
+          const frameCtx = frameCanvas.getContext('2d');
+          frameCtx.drawImage(frameImg, 0, 0, W, H);
+
+          frameCtx.save();
+          frameCtx.globalCompositeOperation = 'destination-out';
+          finalSlots.forEach((s) => {
+            frameCtx.beginPath();
+            if (s.isCircle) {
+              frameCtx.arc(s.x + s.w / 2, s.y + s.h / 2, Math.min(s.w, s.h) / 2, 0, Math.PI * 2);
+            } else {
+              frameCtx.rect(s.x, s.y, s.w, s.h);
+            }
+            frameCtx.fill();
+          });
+          frameCtx.restore();
+
+          ctx.drawImage(frameCanvas, 0, 0);
+          console.log('[Frame] Đã vẽ frame + xóa lỗ slot:', finalSlots.length);
+        } else {
+          ctx.drawImage(frameImg, 0, 0, W, H);
+        }
+
+        // ═══════════════════════════════════════════════
+        // ⭐ BƯỚC 2: Vẽ ẢNH USER vào slot (đè lên frame)
+        //    Camera lộ ra qua lỗ vừa xóa
+        // ═══════════════════════════════════════════════
         photoImgs.forEach((img, i) => {
           const s = finalSlots[i % finalSlots.length];
           if (s) drawImageInSlot(ctx, img, s.x, s.y, s.w, s.h, s.isCircle);
         });
 
-        // ⭐ Bước 2: AI tách chữ — chỉ xóa nền nhạt, giữ chữ
-        const frameCanvas = document.createElement('canvas');
-        frameCanvas.width = W;
-        frameCanvas.height = H;
-        const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true });
-        frameCtx.drawImage(frameImg, 0, 0);
+// ⭐ BƯỚC 3: Vẽ TEXT OVERLAY (trên cùng)
+if (options.textOverlayUrl) {
+  try {
+    const textImg = await new Promise((res, rej) => {
+      const im = new Image();
+      im.crossOrigin = 'anonymous';
+      im.onload = () => res(im);
+      im.onerror = rej;
+      im.src = options.textOverlayUrl;
+    });
 
-        if (isShapeMode) {
-          const mask = window.ShapeGenerator.renderShapeMask(shapeType, shapeValue, W, H);
-          smartClearShape(frameCtx, mask, W, H);
-        } else {
-          finalSlots.forEach((s) => smartClearSlot(frameCtx, s, W, H));
-        }
+    // ⭐ Nếu bật removeBg → xóa nền sáng của ảnh chữ trước khi vẽ
+    if (options.textRemoveBg) {
+      const cleaned = removeLightBackgroundFromImage(textImg);
+      ctx.drawImage(cleaned, 0, 0, W, H);
+      console.log('[Text Overlay] Đã xóa nền sáng + vẽ full khung');
+    } else {
+      ctx.drawImage(textImg, 0, 0, W, H);
+      console.log('[Text Overlay] Vẽ nguyên bản');
+    }
+  } catch (err) {
+    console.warn('[Text Overlay] Không load được:', err);
+  }
+}
 
-        // ⭐ Bước 3: Vẽ frame (chữ đè camera)
-        ctx.drawImage(frameCanvas, 0, 0);
-
-        // ⭐ Bước 4: Text overlay riêng
-        if (options.textOverlayUrl) {
-          try {
-            const textImg = await new Promise((res, rej) => {
-              const im = new Image();
-              im.crossOrigin = 'anonymous';
-              im.onload = () => res(im);
-              im.onerror = rej;
-              im.src = options.textOverlayUrl;
-            });
-            ctx.drawImage(textImg, 0, 0, W, H);
-          } catch (err) {
-            console.warn('[Text Overlay] Không load được:', err);
-          }
-        }
-
-        // ⭐ Bước 5: Hashtag (CÓ XOAY)
+        // ⭐ BƯỚC 4: Hashtag
         if (!options.skipHashtag && window.__currentHashtags && window.__currentHashtags.length > 0) {
           const hx = (window.__hashtagX != null ? window.__hashtagX : 0.5) * W;
           const hy = (window.__hashtagY != null ? window.__hashtagY : 0.92) * H;

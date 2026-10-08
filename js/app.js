@@ -25,9 +25,10 @@
     tuneOverride: null,
     _lastCombinedUrl: null,
     _lastQrUrl: null,
-    _lastSessionId: null,
+    _lastSessionId: null
+    
   };
-
+let _pendingInfo = null
   let camera = null;
   let previewStream = null;
   let _previewFrameOriginal = null;
@@ -71,6 +72,53 @@
     clearTimeout(el._t);
     el._t = setTimeout(() => (el.className = 'toast'), 3000);
   }
+
+  // ============================================
+// ⭐ SIDEBAR TOGGLE — Thu gọn / Mở rộng
+// ============================================
+function updateSidebarToggleIcons() {
+  const collapsed = document.body.classList.contains('sidebar-collapsed');
+  document.querySelectorAll('.sidebar-toggle-btn').forEach((b) => {
+    b.textContent = collapsed ? '▶' : '◀';
+    b.title = collapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên';
+  });
+}
+
+function initSidebarToggle() {
+  // Khôi phục trạng thái lần trước
+  try {
+    if (localStorage.getItem('photobooth_sidebar_collapsed') === '1') {
+      document.body.classList.add('sidebar-collapsed');
+    }
+  } catch (e) { /* ignore */ }
+
+  document.querySelectorAll('.step-sidebar').forEach((sidebar) => {
+    if (sidebar.querySelector('.sidebar-toggle-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sidebar-toggle-btn';
+    btn.setAttribute('aria-label', 'Thu gọn / Mở rộng thanh bên');
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const collapsed = document.body.classList.toggle('sidebar-collapsed');
+      try {
+        localStorage.setItem(
+          'photobooth_sidebar_collapsed',
+          collapsed ? '1' : '0'
+        );
+      } catch (err) { /* ignore */ }
+      updateSidebarToggleIcons();
+      // Cho preview/canvas tính lại kích thước sau khi transition xong
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
+    });
+
+    sidebar.appendChild(btn);
+  });
+
+  updateSidebarToggleIcons();
+}
 
   function loadImageEl(src) {
     return new Promise((resolve, reject) => {
@@ -287,87 +335,103 @@
   }
 
   async function updatePreviewOverlay() {
-    const box = document.getElementById('camera-preview-box');
-    const overlay = document.getElementById('preview-frame-overlay');
-    const placeholder = document.getElementById('preview-placeholder');
-    const textOverlay = document.getElementById('preview-text-overlay');
-    if (!box || !overlay || !placeholder) return;
+  const box = document.getElementById('camera-preview-box');
+  const overlay = document.getElementById('preview-frame-overlay');
+  const placeholder = document.getElementById('preview-placeholder');
+  const textOverlay = document.getElementById('preview-text-overlay');
+  if (!box || !overlay || !placeholder) return;
 
-    if (!state.selectedFrame) {
-      overlay.classList.remove('show');
-      overlay.removeAttribute('src');
-      placeholder.classList.remove('hidden');
-      box.style.setProperty('--frame-aspect', '3 / 4');
-      _previewFrameOriginal = null;
-      _previewFrameCleared = null;
-      if (textOverlay) { textOverlay.removeAttribute('src'); textOverlay.style.display = 'none'; }
-      return;
-    }
-
-    try {
-      const frameImg = await loadImageEl(state.selectedFrame.image_url);
-      if (!frameImg.naturalWidth) return;
-      const W = frameImg.naturalWidth;
-      const H = frameImg.naturalHeight;
-      box.style.setProperty('--frame-aspect', `${W} / ${H}`);
-      _previewFrameOriginal = frameImg.src;
-
-      const c = document.createElement('canvas');
-      c.width = W; c.height = H;
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(frameImg, 0, 0);
-
-      const shapeType = state.selectedFrame.shape_type || 'rect';
-      const shapeValue = state.selectedFrame.shape_value || '';
-
-      if (shapeType !== 'rect' && window.ShapeGenerator) {
-        const mask = window.ShapeGenerator.renderShapeMask(shapeType, shapeValue, W, H);
-        try {
-          const imgData = ctx.getImageData(0, 0, W, H);
-          const maskData = mask.getContext('2d').getImageData(0, 0, W, H).data;
-          const d = imgData.data;
-          for (let i = 0; i < d.length; i += 4) {
-            if (maskData[i + 3] > 128) {
-              const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
-              const isT = a < 50;
-              const isW = r > 220 && g > 220 && b > 220;
-              const isG = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && r > 195 && r < 240;
-              if (isT || isW || isG) d[i + 3] = 0;
-            }
-          }
-          ctx.putImageData(imgData, 0, 0);
-        } catch (e) {
-          ctx.save();
-          ctx.globalCompositeOperation = 'destination-out';
-          ctx.drawImage(mask, 0, 0);
-          ctx.restore();
-        }
-      } else {
-        const layout = state.selectedFrame.layout || 'auto';
-        const photoCount = state.selectedFrame.photo_count || 1;
-        const slots = await computeSlots(frameImg, layout, photoCount);
-        slots.forEach((s) => smartClearPreview(ctx, s, W, H));
-      }
-
-      _previewFrameCleared = c.toDataURL('image/png');
-      refreshPreviewFrameImage();
-      overlay.classList.add('show');
-      placeholder.classList.add('hidden');
-
-      if (textOverlay) {
-        const url = state.selectedFrame.text_overlay_url;
-        if (url) {
-          textOverlay.src = url;
-          textOverlay.style.display = 'block';
-        } else {
-          textOverlay.removeAttribute('src');
-          textOverlay.style.display = 'none';
-        }
-      }
-    } catch (err) {
-      console.error('[Preview] Lỗi:', err);
-    }
+  if (!state.selectedFrame) {
+    overlay.classList.remove('show');
+    overlay.removeAttribute('src');
+    placeholder.classList.remove('hidden');
+    box.style.setProperty('--frame-aspect', '3 / 4');
+    _previewFrameOriginal = null;
+    _previewFrameCleared = null;
+    if (textOverlay) { textOverlay.removeAttribute('src'); textOverlay.style.display = 'none'; }
+    return;
   }
+
+  try {
+    const frameImg = await loadImageEl(state.selectedFrame.image_url);
+    if (!frameImg.naturalWidth) return;
+    const W = frameImg.naturalWidth;
+    const H = frameImg.naturalHeight;
+    box.style.setProperty('--frame-aspect', `${W} / ${H}`);
+    _previewFrameOriginal = state.selectedFrame.image_url;
+
+    // ⭐ Tính slot + xóa cứng vùng slot khỏi frame → tạo lỗ trong suốt
+    const layout = state.selectedFrame.layout || 'auto';
+    const photoCount = state.selectedFrame.photo_count || 1;
+    const slots = await computeSlots(frameImg, layout, photoCount);
+
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(frameImg, 0, 0, W, H);
+
+    if (slots && slots.length > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      slots.forEach((s) => {
+        ctx.beginPath();
+        if (s.isCircle) {
+          ctx.arc(s.x + s.w / 2, s.y + s.h / 2, Math.min(s.w, s.h) / 2, 0, Math.PI * 2);
+        } else {
+          ctx.rect(s.x, s.y, s.w, s.h);
+        }
+        ctx.fill();
+      });
+      ctx.restore();
+      console.log('[Preview] Đã xóa lỗ slot:', slots.length);
+    }
+
+    _previewFrameCleared = c.toDataURL('image/png');
+    refreshPreviewFrameImage();
+    overlay.classList.add('show');
+    placeholder.classList.add('hidden');
+
+    if (textOverlay) {
+  const url = state.selectedFrame.text_overlay_url;
+  if (url) {
+    // ⭐ Nếu có cờ remove_bg → xử lý trước khi hiển thị
+    if (state.selectedFrame.text_remove_bg !== 0 && state.selectedFrame.text_remove_bg != null) {
+      try {
+        const txtImg = await loadImageEl(url);
+        const c2 = document.createElement('canvas');
+        c2.width = txtImg.naturalWidth;
+        c2.height = txtImg.naturalHeight;
+        const ctx2 = c2.getContext('2d', { willReadFrequently: true });
+        ctx2.drawImage(txtImg, 0, 0);
+        const imgData = ctx2.getImageData(0, 0, c2.width, c2.height);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+          if (a < 50) continue;
+          const isWhite = r > 235 && g > 235 && b > 235;
+          const isLightGray = Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r > 200;
+          const isCream = r > 230 && g > 225 && b > 200 && (r - b) < 35;
+          if (isWhite || isLightGray || isCream) d[i + 3] = 0;
+        }
+        ctx2.putImageData(imgData, 0, 0);
+        textOverlay.src = c2.toDataURL('image/png');
+      } catch (e) {
+        console.warn('[Preview Text] Không xử lý được:', e);
+        textOverlay.src = url;
+      }
+    } else {
+      textOverlay.src = url;
+    }
+    textOverlay.style.display = 'block';
+  } else {
+    textOverlay.removeAttribute('src');
+    textOverlay.style.display = 'none';
+  }
+}
+  } catch (err) {
+    console.error('[Preview] Lỗi:', err);
+  }
+}
 
   function refreshPreviewFrameImage() {
     const overlay = document.getElementById('preview-frame-overlay');
@@ -649,14 +713,15 @@
   }
 
   function getShapeOptions() {
-    const f = state.selectedFrame || {};
-    return {
-      shapeType: f.shape_type || 'rect',
-      shapeValue: f.shape_value || '',
-      shapeScale: f.shape_scale != null ? f.shape_scale : 100,
-      textOverlayUrl: f.text_overlay_url || '',
-    };
-  }
+  const f = state.selectedFrame || {};
+  return {
+    shapeType: f.shape_type || 'rect',
+    shapeValue: f.shape_value || '',
+    shapeScale: f.shape_scale != null ? f.shape_scale : 100,
+    textOverlayUrl: f.text_overlay_url || '',
+    textRemoveBg: f.text_remove_bg !== 0,   // ⭐ mặc định true
+  };
+}
 
   let _tuneDebounce = null;
   function schedulePreviewRender() {
@@ -690,9 +755,9 @@
       const shape = getShapeOptions();
 
       const combinedNoTag = await window.generatePhotoStrip(
-        state.selectedFrame.image_url, state.photos, layout,
-        { skipHashtag: true, ...shape }
-      );
+  state.selectedFrame.image_url, state.photos, layout,
+  { skipHashtag: true, clearSlot: true, ...shape }   // ← thêm clearSlot
+);
 
       wrap.classList.remove('loading-preview');
       wrap.classList.add('has-overlay');
@@ -1069,94 +1134,191 @@
   // ============================================
   // FINALIZE
   // ============================================
-  $('#btn-finalize').addEventListener('click', async () => {
+  // ============================================
+// ⭐ INFO MODAL — Nhập thông tin trước khi tạo QR
+// ============================================
+const infoModal = document.getElementById('info-modal');
+const btnInfoCancel = document.getElementById('info-modal-cancel');
+const btnInfoSubmit = document.getElementById('info-modal-submit');
+
+function openInfoModal() {
+  ['modal-mssv', 'modal-name', 'modal-birthyear'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.classList.remove('error'); }
+  });
+  const status = document.getElementById('info-modal-status');
+  if (status) { status.textContent = ''; status.className = 'info-save-status'; }
+  infoModal.classList.add('active');
+  setTimeout(() => document.getElementById('modal-mssv')?.focus(), 300);
+}
+
+function closeInfoModal() {
+  infoModal.classList.remove('active');
+}
+
+if (infoModal) {
+  btnInfoCancel.addEventListener('click', closeInfoModal);
+  infoModal.addEventListener('click', (e) => { if (e.target === infoModal) closeInfoModal(); });
+
+  ['modal-mssv', 'modal-name', 'modal-birthyear'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keypress', (e) => { if (e.key === 'Enter') btnInfoSubmit.click(); });
+  });
+
+  btnInfoSubmit.addEventListener('click', async () => {
+    const mssv = document.getElementById('modal-mssv').value.trim();
+    const name = document.getElementById('modal-name').value.trim();
+    const birthyear = document.getElementById('modal-birthyear').value.trim();
+    const status = document.getElementById('info-modal-status');
+
+    document.getElementById('modal-mssv').classList.remove('error');
+    document.getElementById('modal-name').classList.remove('error');
+
+    if (!mssv) {
+      document.getElementById('modal-mssv').classList.add('error');
+      if (status) { status.textContent = '⚠️ Vui lòng nhập MSSV'; status.className = 'info-save-status error'; }
+      return toast('Nhập MSSV', 'error');
+    }
+    if (!name) {
+      document.getElementById('modal-name').classList.add('error');
+      if (status) { status.textContent = '⚠️ Vui lòng nhập Họ tên'; status.className = 'info-save-status error'; }
+      return toast('Nhập Họ tên', 'error');
+    }
+
+    _pendingInfo = {
+      student_id: mssv,
+      full_name: name,
+      birth_year: birthyear || null,
+    };
+    closeInfoModal();
+
     if (isIpadMode) {
-      RealtimeSync.sendCommand({ action: 'finalize' });
+      // iPad → gửi info + lệnh finalize cho laptop
+      RealtimeSync.sendCommand({ action: 'finalize', info: _pendingInfo });
+      const btn = $('#btn-finalize');
+      btn.disabled = true;
+      btn.textContent = 'Đang xử lý...';
       return;
     }
+    await runFinalize();
+  });
+}
 
-    const btn = $('#btn-finalize');
-    btn.disabled = true;
-    btn.textContent = 'Đang xử lý...';
-    try {
-      const timestamp = Date.now();
-      const sessionId = `${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
-      const layout = state.selectedFrame.layout || 'auto';
-      setHashtagContext();
-      const shape = getShapeOptions();
-      const combinedDataUrl = await window.generatePhotoStrip(
-        state.selectedFrame.image_url, state.photos, layout,
-        { skipHashtag: false, ...shape }
-      );
+// ⭐ Bấm "Tạo QR" → mở modal nhập info (không chạy finalize ngay)
+$('#btn-finalize').addEventListener('click', () => {
+  openInfoModal();
+});
 
-      toast('Đang tải ảnh gốc...', 'info');
-      const individualUrls = [];
-      for (let i = 0; i < state.photos.length; i++) {
-        const blob = window.dataURLtoBlob(state.photos[i]);
-        const fileName = `session-${sessionId}/shot-${i + 1}.jpg`;
-        individualUrls.push(await uploadToBucket(cfg.STORAGE_BUCKET_INDIVIDUAL, blob, fileName));
-      }
+// ============================================
+// ⭐ RUN FINALIZE — Chạy sau khi đã có info
+// ============================================
+async function runFinalize() {
+  const btn = $('#btn-finalize');
+  btn.disabled = true;
+  btn.textContent = 'Đang xử lý...';
+  try {
+    const timestamp = Date.now();
+    const sessionId = `${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
+    const layout = state.selectedFrame.layout || 'auto';
+    setHashtagContext();
+    const shape = getShapeOptions();
+    const combinedDataUrl = await window.generatePhotoStrip(
+  state.selectedFrame.image_url, state.photos, layout,
+  { skipHashtag: false, clearSlot: true, ...shape }  // ← thêm clearSlot
+);
 
-      toast('Đang tải ảnh tổng hợp...', 'info');
-      const combinedBlob = window.dataURLtoBlob(combinedDataUrl);
-      const combinedFileName = `combined-${sessionId}.jpg`;
-      const combinedUrl = await uploadToBucket(cfg.STORAGE_BUCKET_COMBINED, combinedBlob, combinedFileName);
+    toast('Đang tải ảnh gốc...', 'info');
+    const individualUrls = [];
+    for (let i = 0; i < state.photos.length; i++) {
+      const blob = window.dataURLtoBlob(state.photos[i]);
+      const fileName = `session-${sessionId}/shot-${i + 1}.jpg`;
+      individualUrls.push(await uploadToBucket(cfg.STORAGE_BUCKET_INDIVIDUAL, blob, fileName));
+    }
 
-      await supabase.from('photos').insert([{
-        combined_url: combinedUrl,
-        individual_urls: individualUrls,
-        hashtags: state.selectedTags,
-        frame_id: state.selectedFrame.id,
-      }]);
+    toast('Đang tải ảnh tổng hợp...', 'info');
+    const combinedBlob = window.dataURLtoBlob(combinedDataUrl);
+    const combinedFileName = `combined-${sessionId}.jpg`;
+    const combinedUrl = await uploadToBucket(cfg.STORAGE_BUCKET_COMBINED, combinedBlob, combinedFileName);
 
-      const resultWrap = $('#result-preview-wrap');
-      if (resultWrap) resultWrap.innerHTML = '';
+    // ⭐ Insert kèm info luôn (không cần update sau)
+    await supabase.from('photos').insert([{
+      combined_url: combinedUrl,
+      individual_urls: individualUrls,
+      hashtags: state.selectedTags,
+      frame_id: state.selectedFrame.id,
+      student_id: _pendingInfo?.student_id || null,
+      full_name: _pendingInfo?.full_name || null,
+      birth_year: _pendingInfo?.birth_year || null,
+      hometown: null,
+    }]);
 
-      const qrCombined = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(combinedUrl)}`;
-      $('#qr-combined').src = qrCombined;
-      $('#btn-view-combined').href = combinedUrl;
-      $('#btn-download-combined').href = combinedUrl;
+    const resultWrap = $('#result-preview-wrap');
+    if (resultWrap) resultWrap.innerHTML = '';
 
-      $('#individual-list').innerHTML = individualUrls.map((url, i) =>
-        `<img src="${url}" data-idx="${i}" />`
-      ).join('');
-      $('#individual-list').querySelectorAll('img').forEach((imgEl) => {
-        imgEl.addEventListener('click', () => {
-          const idx = parseInt(imgEl.dataset.idx, 10);
-          const items = individualUrls.map((u, i) => ({ src: u, caption: `Ảnh gốc ${i + 1}/${individualUrls.length}` }));
-          window.ZoomModal.open(items, idx);
-        });
+    const qrCombined = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(combinedUrl)}`;
+    $('#qr-combined').src = qrCombined;
+    $('#btn-view-combined').href = combinedUrl;
+    $('#btn-download-combined').href = combinedUrl;
+
+    $('#individual-list').innerHTML = individualUrls.map((url, i) =>
+      `<img src="${url}" data-idx="${i}" />`
+    ).join('');
+    $('#individual-list').querySelectorAll('img').forEach((imgEl) => {
+      imgEl.addEventListener('click', () => {
+        const idx = parseInt(imgEl.dataset.idx, 10);
+        const items = individualUrls.map((u, i) => ({ src: u, caption: `Ảnh gốc ${i + 1}/${individualUrls.length}` }));
+        window.ZoomModal.open(items, idx);
       });
+    });
 
-      showStep('result');
-      toast('Tạo ảnh thành công!', 'success');
+    showStep('result');
+    toast('Tạo ảnh thành công!', 'success');
 
-      // Reset form
+    // ⭐ Pre-fill form bước 5 với info đã nhập + khóa lại
+    if (_pendingInfo) {
+      const mssvEl = document.getElementById('result-mssv');
+      const nameEl = document.getElementById('result-name');
+      const birthEl = document.getElementById('result-birthyear');
+      const homeEl = document.getElementById('result-hometown');
+      if (mssvEl) mssvEl.value = _pendingInfo.student_id || '';
+      if (nameEl) nameEl.value = _pendingInfo.full_name || '';
+      if (birthEl) birthEl.value = _pendingInfo.birth_year || '';
+      if (homeEl) homeEl.value = '';
       ['result-mssv', 'result-name', 'result-hometown', 'result-birthyear'].forEach((id) => {
         const el = document.getElementById(id);
-        if (el) { el.value = ''; el.classList.remove('error'); }
+        if (el) { el.disabled = true; el.classList.remove('error'); }
       });
+      const saveBtn = document.getElementById('btn-save-info');
+      if (saveBtn) {
+        saveBtn.innerHTML = '<span>✅ Đã lưu thông tin</span>';
+        saveBtn.disabled = true;
+      }
       const statusEl = document.getElementById('info-save-status');
-      if (statusEl) { statusEl.textContent = ''; statusEl.className = 'info-save-status'; }
-
-      state._lastCombinedUrl = combinedUrl;
-      state._lastQrUrl = qrCombined;
-      state._lastSessionId = sessionId;
-
-      RealtimeSync.sendState({
-        step: 'result',
-        finalPhotoUrl: combinedUrl,
-        qrUrl: qrCombined,
-      });
-
-    } catch (err) {
-      console.error(err);
-      toast('Lỗi: ' + err.message, 'error');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Tạo QR';
+      if (statusEl) {
+        statusEl.textContent = '✅ Thông tin đã được lưu cùng ảnh';
+        statusEl.className = 'info-save-status success';
+      }
     }
-  });
+
+    state._lastCombinedUrl = combinedUrl;
+    state._lastQrUrl = qrCombined;
+    state._lastSessionId = sessionId;
+
+    RealtimeSync.sendState({
+      step: 'result',
+      finalPhotoUrl: combinedUrl,
+      qrUrl: qrCombined,
+    });
+
+  } catch (err) {
+    console.error(err);
+    toast('Lỗi: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Tạo QR';
+    _pendingInfo = null;
+  }
+}
 
   $('#btn-restart').addEventListener('click', () => {
     if (isIpadMode) {
@@ -1177,6 +1339,18 @@
     $('#photos-preview').innerHTML = '';
     $('#pick-grid').innerHTML = '';
     $('#combined-preview-wrap').innerHTML = '';
+    // Reset info form bước 5
+['result-mssv', 'result-name', 'result-hometown', 'result-birthyear'].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) { el.value = ''; el.disabled = false; el.classList.remove('error'); }
+});
+const _saveBtn = document.getElementById('btn-save-info');
+if (_saveBtn) {
+  _saveBtn.innerHTML = '<span>💾 Lưu thông tin</span>';
+  _saveBtn.disabled = false;
+}
+const _statusEl = document.getElementById('info-save-status');
+if (_statusEl) { _statusEl.textContent = ''; _statusEl.className = 'info-save-status'; }
     updateSelectedFrameInfo();
     updatePreviewOverlay();
     showStep('select');
@@ -1553,10 +1727,12 @@
         break;
       }
       case 'finalize': {
-        const btn = $('#btn-finalize');
-        if (btn && !btn.disabled) btn.click();
-        break;
-      }
+  if (cmd.info) {
+    _pendingInfo = cmd.info;
+    runFinalize();
+  }
+  break;
+}
       case 'restart': {
         const btn = $('#btn-restart');
         if (btn) btn.click();
@@ -1611,3 +1787,4 @@
   updateSelectedFrameInfo();
   updatePreviewOverlay();
 })();
+
