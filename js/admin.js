@@ -19,7 +19,9 @@
     el._t = setTimeout(() => (el.className = 'toast'), 3000);
   }
 
-  // Upload khung
+  // ============================================
+  // Upload khung PNG
+  // ============================================
   $('#frame-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -30,7 +32,10 @@
       const result = await window.ImageCompressor.compressFrame(file);
       pendingFrameDataUrl = result.dataUrl;
       label.textContent = '✅ ' + file.name;
-      toast(`Nén: ${window.ImageCompressor.formatSize(result.originalSize)} → ${window.ImageCompressor.formatSize(result.compressedSize)}`, 'success');
+      toast(
+        `Nén: ${window.ImageCompressor.formatSize(result.originalSize)} → ${window.ImageCompressor.formatSize(result.compressedSize)}`,
+        'success'
+      );
     } catch (err) {
       label.textContent = '❌ Lỗi';
       toast('Lỗi: ' + err.message, 'error');
@@ -38,7 +43,9 @@
     }
   });
 
+  // ============================================
   // Upload PNG chữ
+  // ============================================
   $('#frame-text-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -57,12 +64,24 @@
     }
   });
 
-  // Load danh sách
+  // ============================================
+  // Load danh sách khung
+  // ============================================
   async function loadFrames() {
     const list = $('#admin-frame-list');
-    const { data, error } = await supabase.from('frames').select('*').order('created_at', { ascending: false });
-    if (error) { list.innerHTML = `<p class="loading">Lỗi: ${error.message}</p>`; return; }
-    if (!data.length) { list.innerHTML = '<p class="loading">Chưa có khung nào.</p>'; return; }
+    const { data, error } = await supabase
+      .from('frames')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      list.innerHTML = `<p class="loading">Lỗi: ${error.message}</p>`;
+      return;
+    }
+    if (!data.length) {
+      list.innerHTML = '<p class="loading">Chưa có khung nào.</p>';
+      return;
+    }
 
     list.innerHTML = data.map((f) => {
       const sizeKB = Math.round((f.image_url.length - 22) * 3 / 4 / 1024);
@@ -70,13 +89,17 @@
         f.shape_type && f.shape_type !== 'rect' ? '🎨' : '',
         f.pose_id ? '🎭' : '',
         f.text_overlay_url ? '🅰️' : '',
+        f.frame_remove_bg ? '🌟' : '',      // ⭐ Badge cho frame_remove_bg
       ].filter(Boolean).join('');
+
       return `
         <div class="admin-frame-item">
           <img src="${f.image_url}" loading="lazy" />
           <div class="admin-frame-item-info">
             <div class="admin-frame-item-name">${f.name}</div>
-            <div class="admin-frame-item-meta">${f.photo_count || 1} ô · ${f.capture_count || 3} shot · ${sizeKB}KB ${badges}</div>
+            <div class="admin-frame-item-meta">
+              ${f.photo_count || 1} ô · ${f.capture_count || 3} shot · ${sizeKB}KB ${badges}
+            </div>
           </div>
           <button class="admin-frame-item-del" data-del-frame="${f.id}">✕</button>
         </div>`;
@@ -85,7 +108,10 @@
     list.querySelectorAll('[data-del-frame]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         if (!confirm('Xóa khung này?')) return;
-        const { error } = await supabase.from('frames').delete().eq('id', btn.dataset.delFrame);
+        const { error } = await supabase
+          .from('frames')
+          .delete()
+          .eq('id', btn.dataset.delFrame);
         if (error) return toast('Lỗi: ' + error.message, 'error');
         toast('Đã xóa', 'success');
         loadFrames();
@@ -93,10 +119,13 @@
     });
   }
 
-  // Thêm khung
+  // ============================================
+  // ⭐ Thêm khung — FIXED "layout is not defined"
+  // ============================================
   $('#btn-add-frame').addEventListener('click', async () => {
+    // ─── 1. Đọc tất cả giá trị từ form ───
     const name = $('#frame-name').value.trim();
-    const layout = $('#frame-layout').value;
+    const layout = $('#frame-layout').value;                         // ⭐ DÒNG QUAN TRỌNG
     const photo_count = parseInt($('#frame-photo-count').value, 10) || 1;
     const capture_count = parseInt($('#frame-capture-count').value, 10) || 3;
 
@@ -105,10 +134,15 @@
     const color = $('#frame-hashtag-color').value || '#fbbf24';
 
     const PRESET_POS = {
-      'bottom-center': [0.5, 0.92], 'bottom-left': [0.12, 0.92], 'bottom-right': [0.88, 0.92],
-      'top-center': [0.5, 0.08], 'top-left': [0.12, 0.08], 'top-right': [0.88, 0.08],
+      'bottom-center': [0.5, 0.92],
+      'bottom-left': [0.12, 0.92],
+      'bottom-right': [0.88, 0.92],
+      'top-center': [0.5, 0.08],
+      'top-left': [0.12, 0.08],
+      'top-right': [0.88, 0.08],
       'center': [0.5, 0.5],
     };
+
     let hx, hy;
     if (preset === 'custom') {
       hx = parseFloat($('#frame-hashtag-x').value) || 0.5;
@@ -122,26 +156,39 @@
     const shape_value = shape_type === 'text' ? shape_text : '';
     const pose_id = $('#frame-pose').value || '';
 
+    // ⭐ Checkbox tách nền PNG chữ + PNG khung
+    const textRemoveBg = document.getElementById('frame-text-remove-bg')?.checked ?? true;
+    const frameRemoveBg = document.getElementById('frame-bg-remove')?.checked ?? false;
+
+    // ─── 2. Validate ───
     if (!name) return toast('Nhập tên khung', 'error');
     if (!pendingFrameDataUrl) return toast('Chọn ảnh khung', 'error');
     if (capture_count < photo_count) return toast('Số shot >= số ô', 'error');
     if (shape_type === 'text' && !shape_value) return toast('Nhập chữ', 'error');
 
+    // ─── 3. Insert vào Supabase ───
     const btn = $('#btn-add-frame');
     btn.disabled = true;
     btn.textContent = 'Đang lưu...';
 
-    const textRemoveBg = document.getElementById('frame-text-remove-bg')?.checked ?? true;
-
-const { error } = await supabase.from('frames').insert([{
-  name,
-  image_url: pendingFrameDataUrl,
-  text_overlay_url: pendingTextOverlayDataUrl || '',
-  text_remove_bg: textRemoveBg ? 1 : 0,   // ⭐ THÊM DÒNG NÀY
-  layout, photo_count, capture_count,
-  hashtag_x: hx, hashtag_y: hy, hashtag_size: size, hashtag_color: color,
-  shape_type, shape_value, shape_scale: 100, pose_id,
-}]);
+    const { error } = await supabase.from('frames').insert([{
+      name,
+      image_url: pendingFrameDataUrl,
+      text_overlay_url: pendingTextOverlayDataUrl || '',
+      text_remove_bg: textRemoveBg ? 1 : 0,
+      frame_remove_bg: frameRemoveBg ? 1 : 0,        // ⭐ Cột mới
+      layout,
+      photo_count,
+      capture_count,
+      hashtag_x: hx,
+      hashtag_y: hy,
+      hashtag_size: size,
+      hashtag_color: color,
+      shape_type,
+      shape_value,
+      shape_scale: 100,
+      pose_id,
+    }]);
 
     btn.disabled = false;
     btn.textContent = '➕ Thêm khung';
@@ -149,6 +196,7 @@ const { error } = await supabase.from('frames').insert([{
     if (error) return toast('Lỗi: ' + error.message, 'error');
     toast('Đã thêm khung', 'success');
 
+    // ─── 4. Reset form ───
     $('#frame-name').value = '';
     $('#frame-file').value = '';
     $('#frame-text-file').value = '';
@@ -159,17 +207,32 @@ const { error } = await supabase.from('frames').insert([{
     pendingFrameDataUrl = null;
     pendingTextOverlayDataUrl = null;
 
-    const _cbRemove = document.getElementById('frame-text-remove-bg');
-if (_cbRemove) _cbRemove.checked = true;
+    const _cbTextBg = document.getElementById('frame-text-remove-bg');
+    if (_cbTextBg) _cbTextBg.checked = true;
+    const _cbFrameBg = document.getElementById('frame-bg-remove');
+    if (_cbFrameBg) _cbFrameBg.checked = true;
+
     loadFrames();
   });
 
+  // ============================================
   // Hashtag
+  // ============================================
   async function loadHashtags() {
     const list = $('#admin-hashtag-list');
-    const { data, error } = await supabase.from('hashtags').select('*').order('id', { ascending: true });
-    if (error) { list.innerHTML = `<p class="loading">Lỗi: ${error.message}</p>`; return; }
-    if (!data.length) { list.innerHTML = '<p class="loading">Chưa có hashtag.</p>'; return; }
+    const { data, error } = await supabase
+      .from('hashtags')
+      .select('*')
+      .order('id', { ascending: true });
+
+    if (error) {
+      list.innerHTML = `<p class="loading">Lỗi: ${error.message}</p>`;
+      return;
+    }
+    if (!data.length) {
+      list.innerHTML = '<p class="loading">Chưa có hashtag.</p>';
+      return;
+    }
 
     list.innerHTML = data.map((h) =>
       `<div class="hashtag-chip">#${h.tag}<span class="del" data-del-tag="${h.id}">✕</span></div>`
@@ -178,7 +241,10 @@ if (_cbRemove) _cbRemove.checked = true;
     list.querySelectorAll('[data-del-tag]').forEach((el) => {
       el.addEventListener('click', async () => {
         if (!confirm('Xóa hashtag?')) return;
-        const { error } = await supabase.from('hashtags').delete().eq('id', el.dataset.delTag);
+        const { error } = await supabase
+          .from('hashtags')
+          .delete()
+          .eq('id', el.dataset.delTag);
         if (error) return toast('Lỗi: ' + error.message, 'error');
         toast('Đã xóa', 'success');
         loadHashtags();
@@ -200,6 +266,9 @@ if (_cbRemove) _cbRemove.checked = true;
     if (e.key === 'Enter') $('#btn-add-hashtag').click();
   });
 
+  // ============================================
+  // Init
+  // ============================================
   loadFrames();
   loadHashtags();
 })();

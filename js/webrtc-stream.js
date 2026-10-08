@@ -1,237 +1,214 @@
 // ============================================
-// WebRTC STREAM — 30fps P2P qua LAN
+// WebRTC STREAM — Hỗ trợ 2 chiều (forward + reverse)
+//  - forward:  Laptop → iPad  (iPad xem cam laptop)
+//  - reverse:  iPad  → Laptop (Laptop xem cam iPad) ⭐ MỚI
 // ============================================
 window.WebRTCStream = (function () {
-  let pc = null;
-  let localStream = null;
-  let role = null;
-  let roomId = null;
-  let channel = null;
-  let remoteVideoEl = null;
-  let isConnected = false;
+  const peers = {};   // name → { pc, channel, role, roomId, ... }
 
-  // ⭐ Nhiều STUN server để tăng tỉ lệ kết nối thành công
   const ICE_SERVERS = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' },
-      { urls: 'stun:stun.services.mozilla.com' },
     ],
     iceCandidatePoolSize: 10,
   };
 
-  // ============================================
-  // LAPTOP: SENDER
-  // ============================================
-  async function initSender(videoSource, rid) {
-    role = 'sender';
-    roomId = rid;
+  function _peer(name) {
+    if (!peers[name]) {
+      peers[name] = {
+        name, pc: null, channel: null, role: null, roomId: null,
+        remoteVideoEl: null, localStream: null, isConnected: false,
+      };
+    }
+    return peers[name];
+  }
+
+  function _prefix(name) {
+    return name === 'forward' ? 'webrtc' : 'webrtc-reverse';
+  }
+
+  async function _initSender(name, videoSource, roomId) {
+    const p = _peer(name);
+    p.role = 'sender';
+    p.roomId = roomId;
 
     if (!videoSource || !videoSource.srcObject) {
-      console.error('[WebRTC] ❌ Không có video source');
+      console.error(`[WebRTC ${name}] ❌ Không có video source`);
       return false;
     }
-
-    localStream = videoSource.srcObject;
-    const tracks = localStream.getVideoTracks();
+    p.localStream = videoSource.srcObject;
+    const tracks = p.localStream.getVideoTracks();
     if (!tracks.length) {
-      console.error('[WebRTC] ❌ Không có video track');
+      console.error(`[WebRTC ${name}] ❌ Không có video track`);
       return false;
     }
 
-    console.log('[WebRTC Sender] Khởi tạo · Track:', tracks[0].label);
+    p.pc = new RTCPeerConnection(ICE_SERVERS);
+    tracks.forEach((t) => p.pc.addTrack(t, p.localStream));
 
-    // Tạo peer connection
-    pc = new RTCPeerConnection(ICE_SERVERS);
+    const evt = _prefix(name);
 
-    // Add video track
-    tracks.forEach((track) => {
-      pc.addTrack(track, localStream);
-    });
-
-    // Gửi ICE candidates qua Supabase
-    pc.onicecandidate = (event) => {
-      if (event.candidate && channel) {
-        channel.send({
+    p.pc.onicecandidate = (e) => {
+      if (e.candidate && p.channel) {
+        p.channel.send({
           type: 'broadcast',
-          event: 'webrtc-ice',
-          payload: { from: 'sender', candidate: event.candidate },
+          event: `${evt}-ice`,
+          payload: { from: 'sender', candidate: e.candidate },
         }).catch(() => {});
       }
     };
-
-    pc.oniceconnectionstatechange = () => {
-      console.log('[WebRTC Sender] ICE state:', pc.iceConnectionState);
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log('[WebRTC Sender] Connection:', pc.connectionState);
-      if (pc.connectionState === 'connected') {
-        isConnected = true;
-        console.log('[WebRTC] ✅ KẾT NỐI P2P THÀNH CÔNG');
+    p.pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC ${name}] state:`, p.pc?.connectionState);
+      if (p.pc?.connectionState === 'connected') {
+        p.isConnected = true;
+        console.log(`[WebRTC ${name}] ✅ P2P SENDER CONNECTED`);
       }
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        isConnected = false;
-        console.warn('[WebRTC] ⚠️ Mất kết nối');
+      if (p.pc?.connectionState === 'failed' || p.pc?.connectionState === 'disconnected') {
+        p.isConnected = false;
       }
     };
 
-    // Signaling channel
-    channel = window.supabaseClient.channel(`webrtc-${roomId}`);
-
-    channel
-      .on('broadcast', { event: 'webrtc-ready' }, async ({ payload }) => {
-        // iPad đã ready → tạo offer
-        if (role !== 'sender' || !pc) return;
-        console.log('[WebRTC Sender] iPad ready, tạo offer...');
-        await createOffer();
-      })
-      .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }) => {
-        if (role !== 'sender' || !pc) return;
+    p.channel = window.supabaseClient.channel(`webrtc-${name}-${roomId}`);
+    p.channel
+      .on('broadcast', { event: `${evt}-ready` }, async () => {
+        if (p.role !== 'sender' || !p.pc) return;
+        console.log(`[WebRTC ${name}] Receiver ready → tạo offer`);
         try {
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-          console.log('[WebRTC Sender] ✅ Đã nhận answer');
-        } catch (e) { console.error('[WebRTC Sender] setRemoteDescription:', e); }
+          const offer = await p.pc.createOffer();
+          await p.pc.setLocalDescription(offer);
+          p.channel.send({
+            type: 'broadcast',
+            event: `${evt}-offer`,
+            payload: { offer: p.pc.localDescription },
+          });
+        } catch (e) { console.error(`[WebRTC ${name}] offer:`, e); }
       })
-      .on('broadcast', { event: 'webrtc-ice-ipad' }, async ({ payload }) => {
-        if (role !== 'sender' || !pc || !payload.candidate) return;
+      .on('broadcast', { event: `${evt}-answer` }, async ({ payload }) => {
+        if (p.role !== 'sender' || !p.pc || !payload?.answer) return;
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-        } catch (e) { /* ignore */ }
+          await p.pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+          console.log(`[WebRTC ${name}] Nhận answer ✅`);
+        } catch (e) { console.error(`[WebRTC ${name}] answer:`, e); }
+      })
+      .on('broadcast', { event: `${evt}-ice-rx` }, async ({ payload }) => {
+        if (p.role !== 'sender' || !p.pc || !payload?.candidate) return;
+        try { await p.pc.addIceCandidate(new RTCIceCandidate(payload.candidate)); } catch (e) {}
       });
 
-    await channel.subscribe();
-    console.log('[WebRTC Sender] Ready · Room:', roomId);
+    await p.channel.subscribe();
+    console.log(`[WebRTC ${name}] Sender ready · room=${roomId}`);
     return true;
   }
 
-  async function createOffer() {
-    try {
-      const offer = await pc.createOffer({
-        offerToReceiveVideo: false,
-        offerToReceiveAudio: false,
-      });
-      await pc.setLocalDescription(offer);
+  async function _initReceiver(name, videoEl, roomId) {
+    const p = _peer(name);
+    p.role = 'receiver';
+    p.roomId = roomId;
+    p.remoteVideoEl = videoEl;
 
-      channel.send({
-        type: 'broadcast',
-        event: 'webrtc-offer',
-        payload: { offer: pc.localDescription },
-      });
-      console.log('[WebRTC Sender] Đã gửi offer');
-    } catch (e) {
-      console.error('[WebRTC Sender] createOffer:', e);
-    }
-  }
+    p.pc = new RTCPeerConnection(ICE_SERVERS);
 
-  // ============================================
-  // iPAD: RECEIVER
-  // ============================================
-  async function initReceiver(videoEl, rid) {
-    role = 'receiver';
-    roomId = rid;
-    remoteVideoEl = videoEl;
-
-    console.log('[WebRTC Receiver] Khởi tạo · Room:', roomId);
-
-    pc = new RTCPeerConnection(ICE_SERVERS);
-
-    // Khi nhận được video track
-    pc.ontrack = (event) => {
-      console.log('[WebRTC Receiver] ✅ Nhận track:', event.track.kind);
-      if (remoteVideoEl && event.streams[0]) {
-        remoteVideoEl.srcObject = event.streams[0];
-        remoteVideoEl.play().then(() => {
-          console.log('[WebRTC Receiver] Video playing');
-          const ph = document.getElementById('video-placeholder');
-          if (ph) ph.style.display = 'none';
-        }).catch((e) => console.error('play error:', e));
+    p.pc.ontrack = (event) => {
+      console.log(`[WebRTC ${name}] ✅ Nhận track:`, event.track.kind);
+      if (p.remoteVideoEl && event.streams[0]) {
+        p.remoteVideoEl.srcObject = event.streams[0];
+        p.remoteVideoEl.play().catch((e) => console.error(`[WebRTC ${name}] play:`, e));
+        // ⭐ Callback để app.js biết đã nhận stream
+        if (typeof p.onTrack === 'function') p.onTrack(event.streams[0]);
       }
     };
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && channel) {
-        channel.send({
+    p.pc.onicecandidate = (e) => {
+      if (e.candidate && p.channel) {
+        p.channel.send({
           type: 'broadcast',
-          event: 'webrtc-ice-ipad',
-          payload: { from: 'receiver', candidate: event.candidate },
+          event: `${evt}-ice-rx`,
+          payload: { from: 'receiver', candidate: e.candidate },
         }).catch(() => {});
       }
     };
-
-    pc.oniceconnectionstatechange = () => {
-      console.log('[WebRTC Receiver] ICE state:', pc.iceConnectionState);
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log('[WebRTC Receiver] Connection:', pc.connectionState);
-      if (pc.connectionState === 'connected') {
-        isConnected = true;
-        console.log('[WebRTC] ✅ KẾT NỐI P2P THÀNH CÔNG');
+    p.pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC ${name}] state:`, p.pc?.connectionState);
+      if (p.pc?.connectionState === 'connected') {
+        p.isConnected = true;
+        console.log(`[WebRTC ${name}] ✅ P2P RECEIVER CONNECTED`);
       }
     };
 
-    // Signaling channel
-    channel = window.supabaseClient.channel(`webrtc-${roomId}`);
+    const evt = _prefix(name);
 
-    channel
-      .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }) => {
-        if (role !== 'receiver' || !pc) return;
-        console.log('[WebRTC Receiver] Nhận offer');
+    p.channel = window.supabaseClient.channel(`webrtc-${name}-${roomId}`);
+    p.channel
+      .on('broadcast', { event: `${evt}-offer` }, async ({ payload }) => {
+        if (p.role !== 'receiver' || !p.pc || !payload?.offer) return;
+        console.log(`[WebRTC ${name}] Nhận offer → tạo answer`);
         try {
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-
-          channel.send({
+          await p.pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+          const answer = await p.pc.createAnswer();
+          await p.pc.setLocalDescription(answer);
+          p.channel.send({
             type: 'broadcast',
-            event: 'webrtc-answer',
-            payload: { answer: pc.localDescription },
+            event: `${evt}-answer`,
+            payload: { answer: p.pc.localDescription },
           });
-          console.log('[WebRTC Receiver] Đã gửi answer');
-        } catch (e) { console.error('[WebRTC Receiver] answer:', e); }
+        } catch (e) { console.error(`[WebRTC ${name}] answer:`, e); }
       })
-      .on('broadcast', { event: 'webrtc-ice' }, async ({ payload }) => {
-        if (role !== 'receiver' || !pc || !payload.candidate) return;
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-        } catch (e) { /* ignore */ }
+      .on('broadcast', { event: `${evt}-ice` }, async ({ payload }) => {
+        if (p.role !== 'receiver' || !p.pc || !payload?.candidate) return;
+        try { await p.pc.addIceCandidate(new RTCIceCandidate(payload.candidate)); } catch (e) {}
       });
 
-    await channel.subscribe();
+    await p.channel.subscribe();
 
-    // Thông báo cho sender biết receiver đã ready
+    // Báo sender biết đã ready
     setTimeout(() => {
-      channel.send({
+      p.channel.send({
         type: 'broadcast',
-        event: 'webrtc-ready',
-        payload: { from: 'ipad' },
+        event: `${evt}-ready`,
+        payload: { from: 'receiver' },
       });
-      console.log('[WebRTC Receiver] Đã gửi ready');
+      console.log(`[WebRTC ${name}] Đã gửi ready`);
     }, 500);
 
     return true;
   }
 
-  function disconnect() {
-    isConnected = false;
-    if (pc) {
-      try { pc.close(); } catch (e) {}
-      pc = null;
+  function disconnect(name) {
+    const names = name ? [name] : Object.keys(peers);
+    names.forEach((n) => {
+      const p = peers[n];
+      if (!p) return;
+      if (p.pc) { try { p.pc.close(); } catch (e) {} p.pc = null; }
+      if (p.channel) { try { p.channel.unsubscribe(); } catch (e) {} p.channel = null; }
+      if (p.remoteVideoEl) p.remoteVideoEl.srcObject = null;
+      p.isConnected = false;
+      p.localStream = null;
+    });
+    if (!name) {
+      Object.keys(peers).forEach((k) => delete peers[k]);
     }
-    if (channel) {
-      try { channel.unsubscribe(); } catch (e) {}
-      channel = null;
-    }
-    if (remoteVideoEl) {
-      remoteVideoEl.srcObject = null;
-    }
-    localStream = null;
   }
 
-  return { initSender, initReceiver, disconnect, isReady: () => isConnected };
+  // Đăng ký callback khi nhận track (dùng cho reverse receiver ở laptop)
+  function onTrack(name, cb) {
+    _peer(name).onTrack = cb;
+  }
+
+  return {
+    // Forward (Laptop → iPad) — giữ nguyên API cũ
+    initSender: (video, roomId) => _initSender('forward', video, roomId),
+    initReceiver: (video, roomId) => _initReceiver('forward', video, roomId),
+
+    // Reverse (iPad → Laptop) — ⭐ MỚI
+    initReverseSender: (video, roomId) => _initSender('reverse', video, roomId),
+    initReverseReceiver: (video, roomId) => _initReceiver('reverse', video, roomId),
+
+    onTrack,
+    disconnect,
+    isReady: (name) => name ? (peers[name]?.isConnected || false)
+                            : Object.values(peers).some((p) => p.isConnected),
+  };
 })();

@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>📸 KTCN x CNTT Photobooth</title>
+
+  <!-- ⭐ Preconnect — DNS sớm cho CDN -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://jbshiitgjmmlbayjomzq.supabase.co" crossorigin />
+  <link rel="dns-prefetch" href="https://api.qrserver.com" />
+
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="app-layout">
@@ -43,9 +49,34 @@
       <a href="index.html" class="active">📷</a>
       <a href="admin.html">⚙️</a>
       <button id="btn-show-ipad-pair" class="nav-btn-ipad" title="Kết nối iPad">📱</button>
+      <button id="btn-toggle-hud-sidebar" class="nav-btn-ipad" title="Đổi chế độ xem" style="display:none;">
+  🔀
+</button>
     </nav>
   </header>
-
+<!-- ⭐ HUD BAR NGANG — Chỉ hiện trên iPad, thay vai trò sidebar -->
+<div id="hud-bar" class="hud-bar">
+  <div class="hud-item">
+    <span class="hud-icon">📸</span>
+    <span class="hud-label">BƯỚC</span>
+    <span class="hud-value" id="hud-step">Chọn khung</span>
+  </div>
+  <div class="hud-item hud-progress">
+    <span class="hud-icon">⏱️</span>
+    <span class="hud-label">TIẾN ĐỘ</span>
+    <span class="hud-value" id="hud-progress">—</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-icon">🖼️</span>
+    <span class="hud-label">KHUNG</span>
+    <span class="hud-value" id="hud-frame">—</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-icon">📱</span>
+    <span class="hud-label">KẾT NỐI</span>
+    <span class="hud-value" id="hud-status">—</span>
+  </div>
+</div>
   <div class="progress-bar">
     <div class="progress-step" data-step="1"><span class="progress-num">1</span><span class="progress-label">Khung</span></div>
     <div class="progress-line"></div>
@@ -177,7 +208,7 @@
       </div>
       <div class="step-footer">
         <button id="btn-back-3" class="btn-secondary">← Chụp lại</button>
-        <button id="btn-clear-picks" class="btn-secondary">Xóa hết</button>
+        <button id="btn-clear-picks" class="btn-secondary">Bỏ chọn tất cả</button>
         <button id="btn-picked-continue" disabled class="btn-main">
           <span>Tiếp tục</span>
           <span class="btn-arrow">→</span>
@@ -196,40 +227,54 @@
             <div class="original-thumbs" id="photos-preview"></div>
           </div>
         </div>
-        <div class="hashtag-section-side">
-          <span class="info-label">Hashtag</span>
-          <div id="hashtag-list" class="hashtag-list"></div>
-        </div>
+        
         <div class="tune-panel">
-          <div class="tune-title">🎨 Chỉnh hashtag</div>
-          <label class="admin-label">Vị trí</label>
-          <div class="pos-grid" id="tune-pos-grid">
-            <button class="pos-btn" data-pos="top-left">↖</button>
-            <button class="pos-btn" data-pos="top-center">⬆</button>
-            <button class="pos-btn" data-pos="top-right">↗</button>
-            <button class="pos-btn" data-pos="center">⏺</button>
-            <button class="pos-btn active" data-pos="bottom-center">⬇</button>
-            <button class="pos-btn" data-pos="bottom-left">↙</button>
-            <button class="pos-btn" data-pos="bottom-right">↘</button>
-          </div>
-          <label class="admin-label">Cỡ chữ: <span id="tune-size-val">32</span>px</label>
-          <input type="range" id="tune-size" min="16" max="80" value="32" />
-          <label class="admin-label">Xoay: <span id="tune-rotate-val">0</span>°</label>
-          <input type="range" id="tune-rotate" min="-180" max="180" value="0" />
-          <label class="admin-label">Màu chữ</label>
-          <div class="color-row" id="tune-color-row">
-            <button class="color-btn active" data-color="#38bdf8" style="background:#38bdf8" title="CNTT"></button>
-            <button class="color-btn" data-color="#fbbf24" style="background:#fbbf24" title="KTCN"></button>
-            <button class="color-btn" data-color="#ffffff" style="background:#ffffff" title="Trắng"></button>
-            <button class="color-btn" data-color="#10b981" style="background:#10b981" title="Xanh lá"></button>
-            <button class="color-btn" data-color="#ef4444" style="background:#ef4444" title="Đỏ"></button>
-            <button class="color-btn" data-color="#0a1628" style="background:#0a1628" title="Đen"></button>
-            <input type="color" id="tune-color-custom" value="#38bdf8" />
-          </div>
-          <button id="tune-reset" class="btn-secondary btn-small" style="width:100%; justify-content:center; margin-top:6px;">
-            🔄 Về mặc định
-          </button>
-        </div>
+  <div class="tune-title">🎨 Chỉnh hashtag</div>
+
+  <label class="admin-label">Vị trí</label>
+  <div class="pos-grid" id="tune-pos-grid">
+    <button class="pos-btn" data-pos="top-left">↖</button>
+    <button class="pos-btn" data-pos="top-center">⬆</button>
+    <button class="pos-btn" data-pos="top-right">↗</button>
+    <button class="pos-btn" data-pos="center">⏺</button>
+    <button class="pos-btn active" data-pos="bottom-center">⬇</button>
+    <button class="pos-btn" data-pos="bottom-left">↙</button>
+    <button class="pos-btn" data-pos="bottom-right">↘</button>
+  </div>
+
+  <label class="admin-label">Màu chữ</label>
+  <div class="color-row" id="tune-color-row">
+    <button class="color-btn active" data-color="#38bdf8" style="background:#38bdf8" title="CNTT"></button>
+    <button class="color-btn" data-color="#fbbf24" style="background:#fbbf24" title="KTCN"></button>
+    <button class="color-btn" data-color="#ffffff" style="background:#ffffff" title="Trắng"></button>
+    <button class="color-btn" data-color="#10b981" style="background:#10b981" title="Xanh lá"></button>
+    <button class="color-btn" data-color="#ef4444" style="background:#ef4444" title="Đỏ"></button>
+    <button class="color-btn" data-color="#a855f7" style="background:#a855f7" title="Tím"></button>
+    <button class="color-btn" data-color="#ec4899" style="background:#ec4899" title="Hồng"></button>
+    <button class="color-btn" data-color="#0a1628" style="background:#0a1628" title="Đen"></button>
+    <input type="color" id="tune-color-custom" value="#38bdf8" />
+  </div>
+
+  <label class="admin-label">Phong cách</label>
+  <div class="style-row" id="tune-style-row">
+    <button class="style-btn active" data-style="default" title="Cổ điển">✨</button>
+    <button class="style-btn" data-style="outline" title="Viền nổi">🔲</button>
+    <button class="style-btn" data-style="shadow" title="Đổ bóng 3D">🌑</button>
+    <button class="style-btn" data-style="glow" title="Phát sáng">💫</button>
+    <button class="style-btn" data-style="neon" title="Neon">🌈</button>
+    <button class="style-btn" data-style="gradient" title="Gradient">🎨</button>
+  </div>
+
+  <div class="gesture-hint">
+    <div class="gh-item"><span class="gh-icon">👆</span> Kéo 1 ngón để di chuyển</div>
+    <div class="gh-item"><span class="gh-icon">✌️</span> Xoay 2 ngón để quay chữ</div>
+    <div class="gh-item"><span class="gh-icon">🤏</span> Chụm/mở 2 ngón để phóng to</div>
+  </div>
+
+  <button id="tune-reset" class="btn-secondary btn-small" style="width:100%; justify-content:center; margin-top:6px;">
+    🔄 Về mặc định
+  </button>
+</div>
       </div>
       <div class="step-content center">
         <div id="combined-preview-wrap" class="preview-compact loading-preview">
@@ -307,7 +352,17 @@
         </button>
       </div>
     </section>
-
+<div id="hashtag-float-panel" class="hashtag-float-panel">
+  <div class="hfp-header" id="hfp-header">
+    <span class="hfp-icon">#️⃣</span>
+    <span class="hfp-title">Hashtag</span>
+    <span class="hfp-count" id="hfp-count">0</span>
+    <button class="hfp-toggle" id="hfp-toggle" title="Thu gọn">▲</button>
+  </div>
+  <div class="hfp-body">
+    <div id="hashtag-list" class="hashtag-list-float"></div>
+  </div>
+</div>
     <div id="toast" class="toast"></div>
   </main>
 <!-- ⭐ MODAL NHẬP THÔNG TIN TRƯỚC KHI TẠO QR -->
@@ -388,18 +443,20 @@
     <div class="zoom-info"><span id="zoom-caption"></span></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js"></script>
-  <script src="js/supabase-client.js"></script>
-  <script src="js/camera.js"></script>
-  <script src="js/image-enhancer.js"></script>
-  <script src="js/shape-generator.js"></script>
-  <script src="js/pose-library.js"></script>
-  <script src="js/frame-generator.js"></script>
-  <script src="js/zoom.js"></script>
-  <script src="js/realtime-sync.js"></script>
-  <script src="js/webrtc-stream.js"></script>
-  <script src="js/app.js"></script>
+   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="js/config.js"></script>
+  <script defer src="js/supabase-client.js"></script>
+  <script defer src="js/camera.js"></script>
+  <script defer src="js/image-enhancer.js"></script>
+  <script defer src="js/shape-generator.js"></script>
+  <script defer src="js/pose-library.js"></script>
+  <script defer src="js/chroma-key.js"></script>
+  <script defer src="js/viewport-scaler.js"></script>
+  <script defer src="js/frame-generator.js"></script>
+  <script defer src="js/zoom.js"></script>
+  <script defer src="js/realtime-sync.js"></script>
+  <script defer src="js/webrtc-stream.js"></script>
+  <script defer src="js/app.js"></script>
 
   <script>
   (function () {

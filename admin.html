@@ -59,9 +59,9 @@
             <input type="file" id="frame-text-file" accept="image/png" />
             <span id="text-file-label">📁 Chọn PNG chữ</span>
           </label>
-          <label class="text-remove-bg-row">
-  <input type="checkbox" id="frame-text-remove-bg" checked />
-  <span>✨ Tự xóa nền sáng của PNG chữ</span>
+<label class="text-remove-bg-row" style="background: rgba(56,189,248,0.1); border-color: rgba(56,189,248,0.5); color: var(--tech-sky);">
+  <input type="checkbox" id="frame-bg-remove" checked />
+  <span>🌟 Xóa nền trắng khung → camera tràn viền</span>
 </label>
 
           <div class="form-row-3">
@@ -191,6 +191,7 @@
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
   <script src="js/image-compressor.js"></script>
+   <script src="js/chroma-key.js"></script> 
   <script src="js/admin.js"></script>
   <script>
     document.getElementById('frame-hashtag-preset').addEventListener('change', (e) => {

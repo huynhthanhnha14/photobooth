@@ -1,16 +1,25 @@
 window.CameraManager = class CameraManager {
-  constructor(videoEl, countdownEl) {
+  constructor(videoEl, countdownEl, existingStream = null) {
     this.video = videoEl;
     this.countdownEl = countdownEl;
     this.stream = null;
+    this._providedStream = existingStream || null;   // ⭐ stream từ iPad
   }
 
   async start() {
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
-        audio: false,
-      });
+      if (this._providedStream && this._providedStream.active) {
+        // ⭐ Dùng stream có sẵn (từ iPad qua WebRTC)
+        this.stream = this._providedStream;
+        console.log('[Camera] Dùng stream có sẵn từ iPad');
+      } else {
+        // Fallback: mở cam local
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+          audio: false,
+        });
+        console.log('[Camera] Dùng cam local (getUserMedia)');
+      }
       this.video.srcObject = this.stream;
       await this.video.play();
       return true;
@@ -26,10 +35,11 @@ window.CameraManager = class CameraManager {
   }
 
   stop() {
-    if (this.stream) {
+    // ⭐ KHÔNG stop track nếu là stream cung cấp từ ngoài (iPad)
+    if (this.stream && !this._providedStream) {
       this.stream.getTracks().forEach((t) => t.stop());
-      this.stream = null;
     }
+    this.stream = null;
   }
 
   captureOne() {
@@ -37,7 +47,7 @@ window.CameraManager = class CameraManager {
     canvas.width = this.video.videoWidth;
     canvas.height = this.video.videoHeight;
     const ctx = canvas.getContext('2d');
-    // Vẽ mirror để khớp với preview
+    // Mirror để khớp preview
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(this.video, 0, 0);
