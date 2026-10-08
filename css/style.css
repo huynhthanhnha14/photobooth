@@ -3640,7 +3640,7 @@ body.sidebar-collapsed .sidebar-toggle-btn {
    ⭐ HUD BAR NGANG — Thay sidebar dọc trên iPad
    ═══════════════════════════════════════════ */
 .hud-bar {
-  display: none;                          /* Ẩn mặc định (laptop dùng sidebar) */
+                        /* Ẩn mặc định (laptop dùng sidebar) */
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -3883,3 +3883,241 @@ body[data-current-step="decorate"] .hashtag-float-panel { display: block; }
 }
 
 body.mode-ipad #btn-toggle-hud-sidebar { display: flex; }
+
+/* ═══════════════════════════════════════════════════════
+   ⭐ FIX CUỐI — PROGRESS BAR + HUD BAR GỌN (override all)
+   ═══════════════════════════════════════════════════════ */
+
+/* ─── 1. PROGRESS BAR — số bước nhỏ gọn ─── */
+.progress-bar {
+  padding: 0 14px !important;
+  gap: 6px !important;
+  min-height: 40px !important;
+  max-height: 44px !important;
+}
+
+.progress-step {
+  gap: 5px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.progress-num {
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  min-height: 22px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  border-width: 1.5px !important;
+  font-weight: 900 !important;
+}
+
+.progress-step.active .progress-num {
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.6) !important;
+  transform: scale(1.06) !important;
+}
+
+.progress-label {
+  font-size: 9px !important;
+  letter-spacing: 0.6px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+}
+
+.progress-line {
+  width: 18px !important;
+  height: 1.5px !important;
+  min-width: 18px !important;
+}
+
+/* ─── 2. HUD BAR — fix display none + gọn ─── */
+.hud-bar {
+  display: none !important;                 /* ⭐ FIX LỖI — thiếu dòng này */
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding: 6px 12px !important;
+  min-height: 40px !important;
+  max-height: 44px !important;
+}
+
+/* Chỉ hiện trên iPad */
+body.mode-ipad .hud-bar { display: flex !important; }
+@media (max-width: 900px) {
+  body.mode-host .hud-bar { display: flex !important; }
+}
+
+.hud-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 4px 10px !important;
+  min-height: 30px !important;
+  border-radius: 8px !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.hud-icon {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  font-size: 11px !important;
+  flex-shrink: 0 !important;
+}
+
+.hud-label {
+  font-size: 8px !important;
+  letter-spacing: 0.6px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  line-height: 1 !important;
+}
+
+.hud-value {
+  font-size: 11px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1 !important;
+  margin-left: auto !important;
+  max-width: 100% !important;
+}
+
+.hud-progress .hud-value {
+  font-size: 13px !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* ─── 3. RESPONSIVE — iPad ─── */
+@media (max-width: 900px) {
+  .progress-bar {
+    padding: 0 10px !important;
+    min-height: 36px !important;
+    max-height: 40px !important;
+  }
+  .progress-num {
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+    font-size: 10px !important;
+  }
+  .progress-label {
+    font-size: 8px !important;
+  }
+  .progress-line {
+    width: 14px !important;
+    min-width: 14px !important;
+  }
+
+  .hud-bar {
+    padding: 5px 10px !important;
+    min-height: 36px !important;
+    max-height: 40px !important;
+  }
+  .hud-item {
+    padding: 3px 8px !important;
+    min-height: 28px !important;
+  }
+  .hud-icon {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    font-size: 10px !important;
+  }
+  .hud-value { font-size: 10px !important; }
+  .hud-progress .hud-value { font-size: 12px !important; }
+}
+
+/* ─── 4. Mobile rất nhỏ ─── */
+@media (max-width: 600px) {
+  .progress-label { display: none !important; }
+  .progress-num {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    font-size: 9px !important;
+  }
+  .progress-line { width: 12px !important; min-width: 12px !important; }
+
+  .hud-item:nth-child(3),
+  .hud-item:nth-child(4) {
+    display: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ⭐ PHÓNG TO KHUNG CAMERA — Bước chụp ảnh
+   ═══════════════════════════════════════════════════════ */
+
+/* Container bọc camera — cho phép giãn rộng tối đa */
+.step-content.center {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 12px !important;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Khung camera — to hơn, chiếm tối đa không gian */
+.camera-frame {
+  width: auto !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  aspect-ratio: 4/3 !important;
+  min-width: 480px !important;      /* Đảm bảo tối thiểu 480px ngang */
+  min-height: 360px !important;     /* Đảm bảo tối thiểu 360px cao */
+}
+
+/* Video bên trong lấp đầy khung */
+.camera-frame #video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* ─── Responsive — iPad & Mobile ─── */
+@media (max-width: 900px) {
+  .step-content.center {
+    padding: 8px !important;
+  }
+
+  .camera-frame {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: 100% !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .camera-frame {
+    width: 100% !important;
+    aspect-ratio: 3/4 !important;    /* Dọc trên mobile */
+  }
+}
+
+/* ⭐ iPad mode — camera rộng hơn do không có sidebar */
+body.mode-ipad .step-content.center {
+  padding: 8px !important;
+}
+
+body.mode-ipad .camera-frame {
+  height: 100% !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
+
+/* ⭐ Khi sidebar bị thu gọn — camera càng rộng */
+body.sidebar-collapsed .camera-frame {
+  min-width: 560px !important;
+}

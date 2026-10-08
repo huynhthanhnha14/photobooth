@@ -941,27 +941,86 @@
   // ============================================
   // PICK GRID
   // ============================================
-  function renderPickGrid() {
+    function renderPickGrid() {
     const grid = $('#pick-grid');
     const need = state.selectedFrame?.photo_count || 1;
-    grid.innerHTML = state.allPhotos.map((src, i) => {
+    const frag = document.createDocumentFragment();
+
+    state.allPhotos.forEach((src, i) => {
       const order = state.pickedIndices.indexOf(i);
       const isPicked = order !== -1;
-      return `
-        <div class="pick-item ${isPicked ? 'picked' : ''}" data-idx="${i}">
-          <img src="${src}" alt="Ảnh ${i + 1}" />
-          ${isPicked ? `<div class="pick-badge">${order + 1}</div>` : ''}
-          <div class="pick-check">${isPicked ? '✓' : '+'}</div>
-        </div>`;
-    }).join('');
-    grid.querySelectorAll('.pick-item').forEach((el) => {
-      const idx = parseInt(el.dataset.idx, 10);
-      el.addEventListener('click', () => togglePick(idx));
-      el.addEventListener('dblclick', () => {
-        const items = state.allPhotos.map((s, i) => ({ src: s, caption: `Ảnh ${i + 1}/${state.allPhotos.length}` }));
-        window.ZoomModal.open(items, idx);
+      const div = document.createElement('div');
+      div.className = `pick-item ${isPicked ? 'picked' : ''}`;
+      div.dataset.idx = i;
+      div.innerHTML = `
+        <img src="${src}" alt="Ảnh ${i + 1}" loading="lazy" />
+        ${isPicked ? `<div class="pick-badge">${order + 1}</div>` : ''}
+        <div class="pick-check">${isPicked ? '✓' : '+'}</div>
+        <button class="pick-zoom-btn" title="Xem to">🔍</button>
+      `;
+
+      // ⭐ Tap = chọn
+      let longPressTimer = null;
+      let longPressTriggered = false;
+      let touchStartX = 0, touchStartY = 0;
+
+      const startLongPress = (e) => {
+        longPressTriggered = false;
+        const touch = e.touches?.[0] || e;
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        longPressTimer = setTimeout(() => {
+          longPressTriggered = true;
+          openPickZoom(i);
+        }, 500);
+      };
+
+      const cancelLongPress = () => {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+
+      const moveCheck = (e) => {
+        const touch = e.touches?.[0] || e;
+        const dx = Math.abs(touch.clientX - touchStartX);
+        const dy = Math.abs(touch.clientY - touchStartY);
+        // Nếu di chuyển > 10px → hủy long-press (user đang scroll)
+        if (dx > 10 || dy > 10) cancelLongPress();
+      };
+
+      // ⭐ CLICK — chọn ảnh
+      div.addEventListener('click', (e) => {
+        if (longPressTriggered) {
+          longPressTriggered = false;
+          return;    // Bỏ qua click sau long-press
+        }
+        togglePick(i);
       });
+
+      // ⭐ LONG-PRESS — zoom
+      div.addEventListener('touchstart', startLongPress, { passive: true });
+      div.addEventListener('touchend', cancelLongPress);
+      div.addEventListener('touchcancel', cancelLongPress);
+      div.addEventListener('touchmove', moveCheck, { passive: true });
+      div.addEventListener('mousedown', startLongPress);
+      div.addEventListener('mouseup', cancelLongPress);
+      div.addEventListener('mouseleave', cancelLongPress);
+
+      // ⭐ Nút 🔍 — zoom trực tiếp (không cần long-press)
+      const zoomBtn = div.querySelector('.pick-zoom-btn');
+      zoomBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPickZoom(i);
+      });
+
+      frag.appendChild(div);
     });
+
+    grid.innerHTML = '';
+    grid.appendChild(frag);
+
     $('#pick-count').textContent = state.pickedIndices.length;
     $('#pick-total').textContent = need;
     $('#btn-picked-continue').disabled = state.pickedIndices.length !== need;
@@ -977,7 +1036,67 @@
         dotsEl.appendChild(dot);
       }
     }
-  updateHUD();
+    updateHUD();
+  }
+
+  // ⭐ Zoom ảnh trong bước chọn — có nút "Chọn ảnh này"
+  function openPickZoom(startIdx) {
+    const need = state.selectedFrame?.photo_count || 1;
+    const items = state.allPhotos.map((s, i) => ({
+      src: s,
+      caption: `Ảnh ${i + 1}/${state.allPhotos.length}`,
+    }));
+
+    // ⭐ Wrap ZoomModal để thêm nút chọn
+    window.ZoomModal.open(items, startIdx);
+
+    // Inject nút "Chọn ảnh này" vào zoom modal (chỉ 1 lần)
+    setTimeout(() => {
+      const zoomModal = document.getElementById('zoom-modal');
+      if (!zoomModal) return;
+
+      let actionBtn = zoomModal.querySelector('.zoom-action-btn');
+      if (!actionBtn) {
+        actionBtn = document.createElement('button');
+        actionBtn.className = 'zoom-action-btn';
+        actionBtn.innerHTML = '<span id="zoom-action-icon">+</span> <span id="zoom-action-text">Chọn ảnh này</span>';
+        const info = zoomModal.querySelector('.zoom-info');
+        if (info) info.parentNode.insertBefore(actionBtn, info);
+
+        actionBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const imgEl = document.getElementById('zoom-img');
+          if (!imgEl) return;
+          // Tìm index từ src
+          const idx = state.allPhotos.findIndex((s) => s === imgEl.src);
+          if (idx !== -1) {
+            togglePick(idx);
+            updateZoomActionBtn();
+          }
+        });
+      }
+
+      // Update trạng thái nút mỗi khi đổi ảnh
+      function updateZoomActionBtn() {
+        const imgEl = document.getElementById('zoom-img');
+        const btn = zoomModal.querySelector('.zoom-action-btn');
+        if (!imgEl || !btn) return;
+        const idx = state.allPhotos.findIndex((s) => s === imgEl.src);
+        const isPicked = state.pickedIndices.includes(idx);
+        const iconEl = document.getElementById('zoom-action-icon');
+        const textEl = document.getElementById('zoom-action-text');
+        if (iconEl) iconEl.textContent = isPicked ? '✓' : '+';
+        if (textEl) textEl.textContent = isPicked ? 'Bỏ chọn ảnh này' : 'Chọn ảnh này';
+        btn.classList.toggle('picked', isPicked);
+      }
+      updateZoomActionBtn();
+
+      // Hook vào nút prev/next để update
+      const prev = zoomModal.querySelector('.zoom-prev');
+      const next = zoomModal.querySelector('.zoom-next');
+      prev?.addEventListener('click', () => setTimeout(updateZoomActionBtn, 50));
+      next?.addEventListener('click', () => setTimeout(updateZoomActionBtn, 50));
+    }, 100);
   }
 
   function togglePick(idx) {

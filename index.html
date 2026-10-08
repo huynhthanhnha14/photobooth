@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>📸 KTCN x CNTT Photobooth</title>
+  <title>📸 CNTT CET Photobooth</title>
 
   <!-- ⭐ Preconnect — DNS sớm cho CDN -->
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
@@ -24,24 +24,65 @@
 
   <header class="app-header">
     <div class="app-logo">
-      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#1e40af"/>
-            <stop offset="100%" stop-color="#0a1628"/>
-          </linearGradient>
-          <linearGradient id="lg2" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#fbbf24"/>
-            <stop offset="100%" stop-color="#f59e0b"/>
-          </linearGradient>
-        </defs>
-        <polygon points="100,10 175,55 175,145 100,190 25,145 25,55" fill="url(#lg1)" stroke="url(#lg2)" stroke-width="5"/>
-        <path d="M 75 60 L 60 105 L 85 105 L 75 140 L 105 95 L 80 95 Z" fill="url(#lg2)"/>
-        <text x="130" y="115" font-family="monospace" font-size="34" font-weight="900" fill="#38bdf8" text-anchor="middle">&lt;/&gt;</text>
-      </svg>
-    </div>
+  <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="logoGold" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fbbf24"/>
+        <stop offset="100%" stop-color="#f59e0b"/>
+      </linearGradient>
+      <linearGradient id="logoBlue" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#1e3a8a"/>
+        <stop offset="100%" stop-color="#0d1b3e"/>
+      </linearGradient>
+      <linearGradient id="logoSun" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#c68f4a"/>
+        <stop offset="100%" stop-color="#8a5a2b"/>
+      </linearGradient>
+    </defs>
+
+    <!-- ⭐ Vòng tròn vàng bên ngoài -->
+    <circle cx="100" cy="100" r="98" fill="url(#logoGold)"/>
+    <circle cx="100" cy="100" r="86" fill="#ffffff"/>
+
+    <!-- ⭐ Shield (khiên) viền xanh navy -->
+    <path d="M 100 28
+             L 165 45
+             L 165 105
+             Q 165 155, 100 182
+             Q 35 155, 35 105
+             L 35 45 Z"
+          fill="none"
+          stroke="#0d1b3e"
+          stroke-width="6"
+          stroke-linejoin="round"/>
+
+    <!-- ⭐ Mặt trời lặn — nửa vòng tròn nâu -->
+    <path d="M 62 115
+             A 38 38 0 0 1 138 115
+             Z"
+          fill="url(#logoSun)"/>
+
+    <!-- ⭐ Tia nắng hình tam giác tỏa lên -->
+    <g fill="url(#logoSun)">
+      <polygon points="100,48 96,72 104,72"/>
+      <polygon points="70,55 76,75 84,70"/>
+      <polygon points="130,55 116,70 124,75"/>
+      <polygon points="52,78 70,88 72,80"/>
+      <polygon points="148,78 128,80 130,88"/>
+    </g>
+
+    <!-- ⭐ Tia nước xanh dọc dưới mặt trời -->
+    <g fill="#1e40af">
+      <rect x="80"  y="115" width="6" height="35" rx="3"/>
+      <rect x="90"  y="115" width="6" height="50" rx="3"/>
+      <rect x="100" y="115" width="6" height="60" rx="3"/>
+      <rect x="110" y="115" width="6" height="50" rx="3"/>
+      <rect x="120" y="115" width="6" height="35" rx="3"/>
+    </g>
+  </svg>
+</div>
     <div class="app-title">
-      <div class="app-title-line1">KTCN × CNTT</div>
+      <div class="app-title-line1">CNTT - CET</div>
       <div class="app-title-line2">Photobooth</div>
     </div>
     <div class="mode-badge" id="mode-badge" style="display:none;"></div>
