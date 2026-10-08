@@ -25,7 +25,7 @@
     tuneOverride: null,
     _lastCombinedUrl: null,
     _lastQrUrl: null,
-    _lastSessionId: null
+    _lastSessionId: null,
   };
   let _pendingInfo = null;
 
@@ -42,10 +42,20 @@
   let _webrtcReceiverStarted = false;
   let _webrtcRetryTimer = null;
 
-    // ⭐ Reverse stream — iPad gửi cam lên laptop
+  // ⭐ Reverse stream — iPad gửi cam lên laptop
   let _remoteIpadStream = null;
   let _reverseReceiverStarted = false;
-  let _ipadLocalStream = null;   // chỉ dùng ở iPad mode
+  let _ipadLocalStream = null;
+
+  // ⭐ Fingerprint chống spam state
+  let _lastStateFingerprint = '';
+
+  // ⭐ Cache ảnh + ChromaKey
+  const _chromaCache = new Map();
+  const _imgCache = new Map();
+
+  // ⭐ Hashtag position persistence
+  const HASHTAG_POS_KEY = (frameId) => `hashtag_pos_${frameId}`;
 
   const steps = {
     select: $('#step-select'),
@@ -68,9 +78,8 @@
       el.classList.toggle('active', s === cur);
       el.classList.toggle('done', s < cur);
     });
-
-    document.body.setAttribute('data-current-step', name);   // ⭐ Track step
-    updateHUD();   
+    document.body.setAttribute('data-current-step', name);
+    updateHUD();
   }
 
   function toast(msg, type = 'info') {
@@ -82,7 +91,77 @@
   }
 
   // ============================================
-  // ⭐ SIDEBAR TOGGLE — Thu gọn / Mở rộng
+  // ⭐ HUD BAR — update tiến độ ngang
+  // ============================================
+  function updateHUD() {
+    const stepEl = document.getElementById('hud-step');
+    const progEl = document.getElementById('hud-progress');
+    const frameEl = document.getElementById('hud-frame');
+    const statusEl = document.getElementById('hud-status');
+    if (!stepEl) return;
+
+    let stepName = 'Chọn khung';
+    if (steps.capture.classList.contains('active')) stepName = 'Chụp ảnh';
+    else if (steps.pick.classList.contains('active')) stepName = 'Chọn ảnh';
+    else if (steps.decorate.classList.contains('active')) stepName = 'Xem trước';
+    else if (steps.result.classList.contains('active')) stepName = 'Hoàn tất';
+    stepEl.textContent = stepName;
+
+    let prog = '—';
+    if (steps.capture.classList.contains('active')) {
+      const total = state.selectedFrame?.capture_count || 3;
+      prog = `${state.allPhotos.length} / ${total}`;
+    } else if (steps.pick.classList.contains('active')) {
+      const need = state.selectedFrame?.photo_count || 1;
+      prog = `${state.pickedIndices.length} / ${need}`;
+    } else if (steps.select.classList.contains('active')) {
+      prog = state.selectedFrame ? '1 / 1' : '0 / 1';
+    } else if (steps.decorate.classList.contains('active')) {
+      prog = '✓';
+    } else if (steps.result.classList.contains('active')) {
+      prog = '✓';
+    }
+    progEl.textContent = prog;
+
+    frameEl.textContent = state.selectedFrame?.name || '—';
+
+    if (isIpadMode) {
+      statusEl.textContent = _rtConnected ? '📱 iPad' : '⏳...';
+    } else {
+      statusEl.textContent = _rtConnected ? '💻 Đã nối' : '💻 Laptop';
+    }
+  }
+
+  // ============================================
+  // ⭐ HASHTAG POSITION — Lưu/Load localStorage
+  // ============================================
+  function saveHashtagPos() {
+    if (!state.selectedFrame || !state.tuneOverride) return;
+    try {
+      const key = HASHTAG_POS_KEY(state.selectedFrame.id);
+      localStorage.setItem(key, JSON.stringify(state.tuneOverride));
+      console.log('[Hashtag] Đã lưu vị trí:', state.tuneOverride);
+    } catch (e) { /* ignore */ }
+  }
+
+  function loadHashtagPos() {
+    if (!state.selectedFrame) return null;
+    try {
+      const key = HASHTAG_POS_KEY(state.selectedFrame.id);
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  }
+
+  function clearHashtagPos(frameId) {
+    if (!frameId) return;
+    try {
+      localStorage.removeItem(HASHTAG_POS_KEY(frameId));
+    } catch (e) { /* ignore */ }
+  }
+
+  // ============================================
+  // ⭐ SIDEBAR TOGGLE
   // ============================================
   function updateSidebarToggleIcons() {
     const collapsed = document.body.classList.contains('sidebar-collapsed');
@@ -101,32 +180,27 @@
 
     document.querySelectorAll('.step-sidebar').forEach((sidebar) => {
       if (sidebar.querySelector('.sidebar-toggle-btn')) return;
-
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'sidebar-toggle-btn';
       btn.setAttribute('aria-label', 'Thu gọn / Mở rộng thanh bên');
-
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const collapsed = document.body.classList.toggle('sidebar-collapsed');
         try {
-          localStorage.setItem(
-            'photobooth_sidebar_collapsed',
-            collapsed ? '1' : '0'
-          );
+          localStorage.setItem('photobooth_sidebar_collapsed', collapsed ? '1' : '0');
         } catch (err) { /* ignore */ }
         updateSidebarToggleIcons();
         setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
       });
-
       sidebar.appendChild(btn);
     });
-
     updateSidebarToggleIcons();
   }
 
-    // ⭐ HASHTAG FLOAT PANEL — Toggle collapse + Drag + Count
+  // ============================================
+  // ⭐ HASHTAG FLOAT PANEL
+  // ============================================
   function initHashtagFloatPanel() {
     const panel = document.getElementById('hashtag-float-panel');
     const header = document.getElementById('hfp-header');
@@ -134,31 +208,33 @@
     const count = document.getElementById('hfp-count');
     if (!panel) return;
 
-    // Toggle collapse
     toggle?.addEventListener('click', (e) => {
       e.stopPropagation();
       panel.classList.toggle('collapsed');
       toggle.textContent = panel.classList.contains('collapsed') ? '▲' : '▼';
     });
 
-    // Đếm hashtag đã chọn
     function updateCount() {
       const listEl = document.getElementById('hashtag-list');
       if (!listEl || !count) return;
       const sel = listEl.querySelectorAll('.hashtag.selected').length;
+      const oldVal = parseInt(count.textContent, 10) || 0;
       count.textContent = sel;
+      if (sel !== oldVal) {
+        count.classList.remove('pop');
+        void count.offsetWidth;
+        count.classList.add('pop');
+      }
     }
+
     const listEl = document.getElementById('hashtag-list');
     if (listEl && window.MutationObserver) {
       new MutationObserver(updateCount).observe(listEl, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class'],
+        subtree: true, attributes: true, attributeFilter: ['class'],
       });
       updateCount();
     }
 
-    // Drag header để di chuyển panel
     let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
 
     function onDragStart(e) {
@@ -178,7 +254,6 @@
       document.addEventListener('touchmove', onDragMove, { passive: false });
       document.addEventListener('touchend', onDragEnd);
     }
-
     function onDragMove(e) {
       if (!dragging) return;
       e.preventDefault?.();
@@ -192,7 +267,6 @@
       panel.style.left = nl + 'px';
       panel.style.top = nt + 'px';
     }
-
     function onDragEnd() {
       dragging = false;
       document.removeEventListener('mousemove', onDragMove);
@@ -205,27 +279,21 @@
     header?.addEventListener('touchstart', onDragStart, { passive: false });
   }
 
-    // ⭐ Toggle sidebar dọc ↔ HUD bar trên iPad
-  const btnToggleHUD = document.getElementById('btn-toggle-hud-sidebar');
-  if (btnToggleHUD && isIpadMode) {
-    let _showSidebar = false;
-    btnToggleHUD.addEventListener('click', () => {
-      _showSidebar = !_showSidebar;
-      document.querySelectorAll('.step-sidebar').forEach((el) => {
-        el.classList.toggle('force-show', _showSidebar);
-      });
-      const hud = document.getElementById('hud-bar');
-      if (hud) hud.style.display = _showSidebar ? 'none' : 'flex';
-      // Trigger resize cho preview
-      setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
-    });
-  }
-
+  // ============================================
+  // IMAGE UTILS
+  // ============================================
   function loadImageEl(src) {
+    if (_imgCache.has(src)) {
+      const cached = _imgCache.get(src);
+      if (cached.complete && cached.naturalWidth) return Promise.resolve(cached);
+    }
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => resolve(img);
+      img.onload = () => {
+        _imgCache.set(src, img);
+        resolve(img);
+      };
       img.onerror = () => reject(new Error('Không tải được ảnh'));
       img.src = src;
     });
@@ -256,109 +324,130 @@
   }
 
   // ============================================
-  // ⭐ PREVIEW CAMERA — Chỉ chạy ở HOST MODE
+  // ⭐ PREVIEW CAMERA — iPad mở cam local, Laptop fallback
   // ============================================
   async function startPreviewCamera() {
-  if (isIpadMode) {
-    // ⭐ iPad mở cam local của CHÍNH NÓ (thay vì chờ stream từ laptop)
+    if (isIpadMode) {
+      // ⭐ iPad mở cam local của CHÍNH NÓ
+      try {
+        if (_ipadLocalStream) return;
+        _ipadLocalStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+          audio: false,
+        });
+        const previewVideo = $('#preview-video');
+        previewVideo.srcObject = _ipadLocalStream;
+        await previewVideo.play();
+
+        $('#camera-status').classList.add('active');
+        $('#camera-status-text').textContent = 'Camera iPad đang bật';
+        $('#cam-toggle-icon').textContent = '📷';
+        $('#cam-toggle-text').textContent = 'Tắt camera iPad';
+
+        // ⭐ Gửi stream iPad lên laptop qua reverse channel
+        if (_rtRoomId && !_reverseReceiverStarted) {
+          _reverseReceiverStarted = true;
+          setTimeout(() => {
+            const videoSrc = document.getElementById('preview-video');
+            WebRTCStream.initReverseSender(videoSrc, _rtRoomId).then((ok) => {
+              if (!ok) {
+                _reverseReceiverStarted = false;
+                setTimeout(() => {
+                  if (!WebRTCStream.isReady('reverse')) {
+                    WebRTCStream.initReverseSender(videoSrc, _rtRoomId);
+                    _reverseReceiverStarted = true;
+                  }
+                }, 3000);
+              }
+            });
+          }, 800);
+        }
+      } catch (err) {
+        console.error('[iPad] Không mở được cam local:', err);
+        toast('iPad cần HTTPS để mở cam: ' + err.message, 'error');
+      }
+      return;
+    }
+
+    // ═══ HOST MODE (laptop) ═══
     try {
-      if (_ipadLocalStream) return;
-      _ipadLocalStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
-        audio: false,
-      });
+      if (previewStream) return;
+
+      // ⭐ 1. Ưu tiên stream từ iPad nếu đã có
+      if (_remoteIpadStream && _remoteIpadStream.active) {
+        previewStream = _remoteIpadStream;
+        console.log('[Preview] Dùng stream từ iPad');
+      } else {
+        // ⭐ 2. Thử mở cam local, nếu bị từ chối → chờ iPad
+        try {
+          previewStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: _currentFacingMode,
+              width: { ideal: 1280 },
+              height: { ideal: 960 },
+            },
+            audio: false,
+          });
+          console.log('[Preview] Dùng cam local laptop');
+        } catch (camErr) {
+          console.warn('[Preview] Không mở được cam local:', camErr.message);
+          console.log('[Preview] Chờ stream từ iPad...');
+
+          $('#camera-status').classList.add('active');
+          $('#camera-status-text').textContent = '⏳ Chờ camera iPad';
+          $('#cam-toggle-icon').textContent = '📱';
+          $('#cam-toggle-text').textContent = 'Chờ iPad';
+
+          const pv = $('#preview-video');
+          if (pv) pv.poster = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect fill="%230a1628" width="400" height="300"/><text x="200" y="150" fill="%2338bdf8" font-family="sans-serif" font-size="16" text-anchor="middle">⏳ Đang chờ camera iPad...</text></svg>';
+
+          setTimeout(() => {
+            if (_remoteIpadStream && _remoteIpadStream.active) {
+              startPreviewCamera();
+            }
+          }, 2000);
+          return;
+        }
+      }
+
       const previewVideo = $('#preview-video');
-      previewVideo.srcObject = _ipadLocalStream;
+      previewVideo.srcObject = previewStream;
+      previewVideo.poster = '';
       await previewVideo.play();
 
       $('#camera-status').classList.add('active');
-      $('#camera-status-text').textContent = 'Camera iPad đang bật';
+      $('#camera-status-text').textContent =
+        (_remoteIpadStream && _remoteIpadStream.active) ? '📱 Camera iPad' : 'Camera đang bật';
       $('#cam-toggle-icon').textContent = '📷';
-      $('#cam-toggle-text').textContent = 'Tắt camera iPad';
+      $('#cam-toggle-text').textContent = 'Tắt camera';
 
-      // ⭐ Gửi stream iPad lên laptop qua reverse channel
-      if (_rtRoomId && !_reverseReceiverStarted) {
-        _reverseReceiverStarted = true;
-        setTimeout(() => {
-          const videoSrc = document.getElementById('preview-video');
-          WebRTCStream.initReverseSender(videoSrc, _rtRoomId).then((ok) => {
-            if (!ok) {
-              _reverseReceiverStarted = false;
-              setTimeout(() => {
-                if (!WebRTCStream.isReady('reverse')) {
-                  WebRTCStream.initReverseSender(videoSrc, _rtRoomId);
-                  _reverseReceiverStarted = true;
-                }
-              }, 3000);
-            }
-          });
-        }, 800);
-      }
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter((d) => d.kind === 'videoinput');
+        const btnSwitch = $('#btn-switch-camera');
+        if (btnSwitch) btnSwitch.style.display = cams.length > 1 ? 'flex' : 'none';
+      } catch (e) { /* ignore */ }
+
+      refreshPreviewFrameImage();
     } catch (err) {
-      console.error('[iPad] Không mở được cam local:', err);
-      toast('iPad cần HTTPS để mở cam: ' + err.message, 'error');
+      console.error('Không mở được camera preview:', err);
+      toast('Không thể mở camera: ' + err.message, 'error');
     }
-    return;
   }
-
-  // ═══ HOST MODE (laptop) ═══
-  try {
-    if (previewStream) return;
-
-    // ⭐ Ưu tiên: nếu đã nhận stream từ iPad → dùng nó
-    if (_remoteIpadStream && _remoteIpadStream.active) {
-      previewStream = _remoteIpadStream;
-      console.log('[Preview] Dùng stream từ iPad');
-    } else {
-      previewStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: _currentFacingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 960 },
-        },
-        audio: false,
-      });
-      console.log('[Preview] Dùng cam local laptop');
-    }
-
-    const previewVideo = $('#preview-video');
-    previewVideo.srcObject = previewStream;
-    await previewVideo.play();
-
-    $('#camera-status').classList.add('active');
-    $('#camera-status-text').textContent =
-      (_remoteIpadStream && _remoteIpadStream.active) ? 'Camera iPad' : 'Camera đang bật';
-    $('#cam-toggle-icon').textContent = '📷';
-    $('#cam-toggle-text').textContent = 'Tắt camera';
-
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cams = devices.filter((d) => d.kind === 'videoinput');
-      const btnSwitch = $('#btn-switch-camera');
-      if (btnSwitch) btnSwitch.style.display = cams.length > 1 ? 'flex' : 'none';
-    } catch (e) { /* ignore */ }
-
-    refreshPreviewFrameImage();
-  } catch (err) {
-    console.error('Không mở được camera preview:', err);
-    toast('Không thể mở camera: ' + err.message, 'error');
-  }
-}
 
   function stopPreviewCamera() {
-  if (previewStream) {
-    // ⭐ KHÔNG stop track nếu đang dùng stream iPad
-    if (previewStream !== _remoteIpadStream) {
-      previewStream.getTracks().forEach((t) => t.stop());
+    if (previewStream) {
+      if (previewStream !== _remoteIpadStream) {
+        previewStream.getTracks().forEach((t) => t.stop());
+      }
+      previewStream = null;
+      $('#camera-status').classList.remove('active');
+      $('#camera-status-text').textContent = 'Camera đang tắt';
+      $('#cam-toggle-icon').textContent = '📷';
+      $('#cam-toggle-text').textContent = 'Bật camera';
+      refreshPreviewFrameImage();
     }
-    previewStream = null;
-    $('#camera-status').classList.remove('active');
-    $('#camera-status-text').textContent = 'Camera đang tắt';
-    $('#cam-toggle-icon').textContent = '📷';
-    $('#cam-toggle-text').textContent = 'Bật camera';
-    refreshPreviewFrameImage();
   }
-}
 
   async function switchCamera() {
     if (isIpadMode) return;
@@ -378,9 +467,8 @@
     }
   }
 
-    $('#btn-toggle-camera').addEventListener('click', () => {
+  $('#btn-toggle-camera').addEventListener('click', () => {
     if (isIpadMode) {
-      // ⭐ iPad toggle cam local
       if (_ipadLocalStream) {
         _ipadLocalStream.getTracks().forEach((t) => t.stop());
         _ipadLocalStream = null;
@@ -389,7 +477,6 @@
         $('#camera-status-text').textContent = 'Camera iPad đang tắt';
         $('#cam-toggle-icon').textContent = '📷';
         $('#cam-toggle-text').textContent = 'Bật camera iPad';
-        // Ngắt reverse sender
         WebRTCStream.disconnect('reverse');
         _reverseReceiverStarted = false;
       } else {
@@ -397,7 +484,6 @@
       }
       return;
     }
-    // Host mode
     if (previewStream) stopPreviewCamera();
     else startPreviewCamera();
   });
@@ -406,7 +492,7 @@
   if (btnSwitchCam) btnSwitchCam.addEventListener('click', switchCamera);
 
   // ============================================
-  // ZOOM
+  // ZOOM PREVIEW (step select)
   // ============================================
   const btnZoom = document.getElementById('btn-zoom-preview');
   const previewBox = document.getElementById('camera-preview-box');
@@ -417,13 +503,11 @@
     previewBox.classList.toggle('zoomed');
     zoomIcon.textContent = previewBox.classList.contains('zoomed') ? '✕' : '🔍';
   }
-
   function closeZoom() {
     if (!previewBox || !zoomIcon) return;
     previewBox.classList.remove('zoomed');
     zoomIcon.textContent = '🔍';
   }
-
   if (btnZoom && previewBox && zoomIcon) {
     btnZoom.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -439,7 +523,7 @@
   }
 
   // ============================================
-  // COMPUTE SLOTS + PREVIEW
+  // COMPUTE SLOTS
   // ============================================
   async function computeSlots(frameImg, layout, photoCount) {
     const W = frameImg.naturalWidth;
@@ -459,7 +543,7 @@
     const ratioSlots = layoutFn(photoCount);
     const isCircle = String(layout).startsWith('circle');
 
-        return ratioSlots.map(([rx, ry, rw, rh]) => {
+    return ratioSlots.map(([rx, ry, rw, rh]) => {
       const x = rx * W, y = ry * H;
       const w = rw * W, h = rh * H;
       return {
@@ -472,45 +556,24 @@
     });
   }
 
-  // ⭐ Giữ lại cho tương thích (không dùng nữa, đã dùng ChromaKey)
-  function smartClearPreview(frameCtx, slot, W, H) {
-    const x = Math.floor(slot.x);
-    const y = Math.floor(slot.y);
-    const w = Math.min(Math.ceil(slot.w), W - x);
-    const h = Math.min(Math.ceil(slot.h), H - y);
-    if (w <= 0 || h <= 0) return;
-    try {
-      const imgData = frameCtx.getImageData(x, y, w, h);
-      const d = imgData.data;
-      const cx = w / 2, cy = h / 2;
-      const radiusSq = Math.pow(Math.min(w, h) / 2, 2);
-      for (let py = 0; py < h; py++) {
-        for (let px = 0; px < w; px++) {
-          const idx = (py * w + px) * 4;
-          if (slot.isCircle) {
-            const dx = (px + 0.5) - cx;
-            const dy = (py + 0.5) - cy;
-            if (dx * dx + dy * dy > radiusSq) continue;
-          }
-          const r = d[idx], g = d[idx + 1], b = d[idx + 2], a = d[idx + 3];
-          const isTransparent = a < 50;
-          const isBrightWhite = r > 220 && g > 220 && b > 220;
-          const isLightGray = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && r > 195 && r < 240;
-          if (isTransparent || isBrightWhite || isLightGray) d[idx + 3] = 0;
-        }
-      }
-      frameCtx.putImageData(imgData, x, y);
-    } catch (e) {
-      frameCtx.clearRect(x, y, w, h);
-    }
+  // ⭐ Helper: vẽ rounded rect path
+  function _roundRectPath(ctx, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    if (r === 0) { ctx.rect(x, y, w, h); return; }
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
   }
 
   // ============================================
-  // ⭐ UPDATE PREVIEW OVERLAY
-  // 3 chế độ:
-  //  1) Không có frame thực → camera + text overlay (fullBleed)
-  //  2) frame_remove_bg === 1 → camera tràn viền + frame ChromaKey đè lên
-  //  3) Frame slot cũ → khoét lỗ slot
+  // ⭐ UPDATE PREVIEW OVERLAY — 3 chế độ
   // ============================================
   async function updatePreviewOverlay() {
     const box = document.getElementById('camera-preview-box');
@@ -532,9 +595,7 @@
       const f = state.selectedFrame;
       const hasRealFrame = f.image_url && f.image_url.length > 100;
 
-      // ═══════════════════════════════════════════════
-      // CHẾ ĐỘ 1: KHÔNG CÓ FRAME THỰC
-      // ═══════════════════════════════════════════════
+      // ─── CHẾ ĐỘ 1: KHÔNG CÓ FRAME THỰC ───
       if (!hasRealFrame) {
         overlay.classList.remove('show');
         overlay.removeAttribute('src');
@@ -557,29 +618,55 @@
         return;
       }
 
-      // ═══════════════════════════════════════════════
-      // CHẾ ĐỘ 2: FRAME_REMOVE_BG = 1 (CAMERA TRÀN VIỀN)
-      // ═══════════════════════════════════════════════
+      // ─── CHẾ ĐỘ 2: FRAME_REMOVE_BG = 1 ───
       if (f.frame_remove_bg === 1) {
+        // ⭐ Cache hit
+        if (_chromaCache.has(f.image_url)) {
+          _previewFrameOriginal = _chromaCache.get(f.image_url);
+          _previewFrameCleared = _previewFrameOriginal;
+          const cachedImg = _imgCache.get(f.image_url);
+          if (cachedImg) {
+            box.style.setProperty('--frame-aspect', `${cachedImg.naturalWidth} / ${cachedImg.naturalHeight}`);
+          }
+          refreshPreviewFrameImage();
+          overlay.classList.add('show');
+          placeholder.classList.add('hidden');
+          if (textOverlay) {
+            const url = f.text_overlay_url;
+            if (url) {
+              if (f.text_remove_bg !== 0) {
+                const txtImg = await loadImageEl(url);
+                textOverlay.src = await cleanTextImage(txtImg);
+              } else {
+                textOverlay.src = url;
+              }
+              textOverlay.style.display = 'block';
+            } else {
+              textOverlay.removeAttribute('src');
+              textOverlay.style.display = 'none';
+            }
+          }
+          return;
+        }
+
         const frameImg = await loadImageEl(f.image_url);
         if (!frameImg.naturalWidth) return;
-
         box.style.setProperty('--frame-aspect', `${frameImg.naturalWidth} / ${frameImg.naturalHeight}`);
 
-        // ⭐ Tách nền trắng → giữ object 3D
         if (window.ChromaKey) {
           try {
             const cleanedUrl = await window.ChromaKey.toDataURL(frameImg, {
-              hardThreshold: 248,
-              softThreshold: 215,
-              satTolerance: 0.10,
+              hardThreshold: 238,
+              softThreshold: 200,
+              satTolerance: 0.14,
               feather: 1,
             });
+            _chromaCache.set(f.image_url, cleanedUrl);
             _previewFrameOriginal = cleanedUrl;
             _previewFrameCleared = cleanedUrl;
-            console.log('[Preview] ✅ ChromaKey tách nền frame → camera tràn viền');
+            console.log('[Preview] ✅ ChromaKey tách nền frame');
           } catch (e) {
-            console.warn('[Preview] ChromaKey lỗi, dùng frame gốc:', e);
+            console.warn('[Preview] ChromaKey lỗi:', e);
             _previewFrameOriginal = f.image_url;
             _previewFrameCleared = f.image_url;
           }
@@ -592,7 +679,6 @@
         overlay.classList.add('show');
         placeholder.classList.add('hidden');
 
-        // Text overlay (PNG chữ)
         if (textOverlay) {
           const url = f.text_overlay_url;
           if (url) {
@@ -608,12 +694,10 @@
             textOverlay.style.display = 'none';
           }
         }
-        return; // ⭐ thoát sớm
+        return;
       }
 
-      // ═══════════════════════════════════════════════
-      // CHẾ ĐỘ 3: FRAME SLOT CŨ (KHOÉT LỖ SLOT)
-      // ═══════════════════════════════════════════════
+      // ─── CHẾ ĐỘ 3: FRAME SLOT CŨ ───
       const frameImg = await loadImageEl(f.image_url);
       if (!frameImg.naturalWidth) return;
       const W = frameImg.naturalWidth;
@@ -630,7 +714,7 @@
       const ctx = c.getContext('2d');
       ctx.drawImage(frameImg, 0, 0, W, H);
 
-           if (slots && slots.length > 0) {
+      if (slots && slots.length > 0) {
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
         slots.forEach((s) => {
@@ -640,19 +724,7 @@
           if (shape === 'circle') {
             ctx.arc(s.x + s.w / 2, s.y + s.h / 2, Math.min(s.w, s.h) / 2, 0, Math.PI * 2);
           } else if (shape === 'rounded-rect' && radius > 0) {
-            // ⭐ Bo góc — helper nội bộ
-            const r = Math.min(radius, s.w / 2, s.h / 2);
-            const x = s.x, y = s.y, w = s.w, h = s.h;
-            ctx.moveTo(x + r, y);
-            ctx.lineTo(x + w - r, y);
-            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-            ctx.lineTo(x + w, y + h - r);
-            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-            ctx.lineTo(x + r, y + h);
-            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-            ctx.lineTo(x, y + r);
-            ctx.quadraticCurveTo(x, y, x + r, y);
-            ctx.closePath();
+            _roundRectPath(ctx, s.x, s.y, s.w, s.h, radius);
           } else {
             ctx.rect(s.x, s.y, s.w, s.h);
           }
@@ -687,17 +759,22 @@
   }
 
   // ============================================
-  // ⭐ CLEAN TEXT IMAGE — Ưu tiên ChromaKey
+  // ⭐ CLEAN TEXT IMAGE — cache + ChromaKey
   // ============================================
   function cleanTextImage(img) {
-    // Ưu tiên module ChromaKey mới
-    if (window.ChromaKey && window.ChromaKey.toDataURL) {
-      return window.ChromaKey.toDataURL(img).catch(() => _legacyCleanText(img));
+    const key = img.src || '';
+    if (key && _chromaCache.has(key)) {
+      return Promise.resolve(_chromaCache.get(key));
     }
-    return _legacyCleanText(img);
+    const run = (window.ChromaKey && window.ChromaKey.toDataURL)
+      ? window.ChromaKey.toDataURL(img).catch(() => _legacyCleanText(img))
+      : _legacyCleanText(img);
+    return run.then((url) => {
+      if (key) _chromaCache.set(key, url);
+      return url;
+    });
   }
 
-  // Fallback flood-fill cũ (giữ nguyên để đề phòng)
   function _legacyCleanText(img) {
     return new Promise((resolve) => {
       try {
@@ -706,7 +783,6 @@
         c.width = w; c.height = h;
         const ctx = c.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(img, 0, 0);
-
         const imgData = ctx.getImageData(0, 0, w, h);
         const d = imgData.data;
         const total = w * h;
@@ -715,7 +791,6 @@
         const qx = new Int32Array(total);
         const qy = new Int32Array(total);
         let head = 0, tail = 0;
-
         const isWhite = (idx) => {
           const i = idx * 4;
           return d[i] > THRESHOLD && d[i+1] > THRESHOLD && d[i+2] > THRESHOLD && d[i+3] > 128;
@@ -727,18 +802,13 @@
           visited[idx] = 1;
           qx[tail] = x; qy[tail] = y; tail++;
         };
-
         for (let x = 0; x < w; x++) { tryPush(x, 0); tryPush(x, h-1); }
         for (let y = 0; y < h; y++) { tryPush(0, y); tryPush(w-1, y); }
-
         while (head < tail) {
-          const x = qx[head], y = qy[head];
-          head++;
-          const idx = y * w + x;
-          d[idx * 4 + 3] = 0;
+          const x = qx[head], y = qy[head]; head++;
+          d[(y * w + x) * 4 + 3] = 0;
           tryPush(x+1, y); tryPush(x-1, y); tryPush(x, y+1); tryPush(x, y-1);
         }
-
         ctx.putImageData(imgData, 0, 0);
         resolve(c.toDataURL('image/png'));
       } catch (e) {
@@ -765,7 +835,8 @@
   async function selectFrame(frame) {
     if (!frame) return;
     state.selectedFrame = frame;
-    state.tuneOverride = null;
+    // ⭐ Load vị trí hashtag đã lưu (nếu có)
+    state.tuneOverride = loadHashtagPos();
     document.querySelectorAll('.frame-item').forEach((el) => {
       el.classList.toggle('selected', el.dataset.id === frame.id);
     });
@@ -804,13 +875,11 @@
     fpModal.classList.add('active');
     document.body.style.overflow = 'hidden';
   }
-
   function closeFramePreview() {
     fpModal.classList.remove('active');
     document.body.style.overflow = '';
     previewingFrame = null;
   }
-
   async function selectFromPreview() {
     if (!previewingFrame) return;
     const frame = previewingFrame;
@@ -821,7 +890,6 @@
       await selectFrame(frame);
     }
   }
-
   fpSelectBtn.addEventListener('click', selectFromPreview);
   fpCancelBtn.addEventListener('click', closeFramePreview);
   fpCloseBtn.addEventListener('click', closeFramePreview);
@@ -930,6 +998,16 @@
   }
 
   async function uploadToBucket(bucket, blob, fileName) {
+    // ⭐ R2 nếu đã cấu hình, fallback Supabase
+    const r2Cfg = cfg.R2;
+    const useR2 = r2Cfg && r2Cfg.ACCOUNT_ID && !r2Cfg.ACCOUNT_ID.includes('YOUR_');
+    if (useR2 && window.R2Storage) {
+      const prefix = 'photos';
+      const key = `${prefix}/${fileName}`;
+      const url = await window.R2Storage.upload(blob, key);
+      console.log(`[Upload R2] ✅ ${url}`);
+      return url;
+    }
     const { error } = await supabase.storage
       .from(bucket)
       .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
@@ -939,9 +1017,9 @@
   }
 
   // ============================================
-  // PICK GRID
+  // PICK GRID — long-press zoom + zoom button
   // ============================================
-    function renderPickGrid() {
+  function renderPickGrid() {
     const grid = $('#pick-grid');
     const need = state.selectedFrame?.photo_count || 1;
     const frag = document.createDocumentFragment();
@@ -959,7 +1037,6 @@
         <button class="pick-zoom-btn" title="Xem to">🔍</button>
       `;
 
-      // ⭐ Tap = chọn
       let longPressTimer = null;
       let longPressTriggered = false;
       let touchStartX = 0, touchStartY = 0;
@@ -974,32 +1051,20 @@
           openPickZoom(i);
         }, 500);
       };
-
       const cancelLongPress = () => {
-        if (longPressTimer) {
-          clearTimeout(longPressTimer);
-          longPressTimer = null;
-        }
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
       };
-
       const moveCheck = (e) => {
         const touch = e.touches?.[0] || e;
         const dx = Math.abs(touch.clientX - touchStartX);
         const dy = Math.abs(touch.clientY - touchStartY);
-        // Nếu di chuyển > 10px → hủy long-press (user đang scroll)
         if (dx > 10 || dy > 10) cancelLongPress();
       };
 
-      // ⭐ CLICK — chọn ảnh
       div.addEventListener('click', (e) => {
-        if (longPressTriggered) {
-          longPressTriggered = false;
-          return;    // Bỏ qua click sau long-press
-        }
+        if (longPressTriggered) { longPressTriggered = false; return; }
         togglePick(i);
       });
-
-      // ⭐ LONG-PRESS — zoom
       div.addEventListener('touchstart', startLongPress, { passive: true });
       div.addEventListener('touchend', cancelLongPress);
       div.addEventListener('touchcancel', cancelLongPress);
@@ -1008,7 +1073,6 @@
       div.addEventListener('mouseup', cancelLongPress);
       div.addEventListener('mouseleave', cancelLongPress);
 
-      // ⭐ Nút 🔍 — zoom trực tiếp (không cần long-press)
       const zoomBtn = div.querySelector('.pick-zoom-btn');
       zoomBtn?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1039,22 +1103,17 @@
     updateHUD();
   }
 
-  // ⭐ Zoom ảnh trong bước chọn — có nút "Chọn ảnh này"
+  // ⭐ Zoom ảnh pick — có nút "Chọn ảnh này"
   function openPickZoom(startIdx) {
-    const need = state.selectedFrame?.photo_count || 1;
     const items = state.allPhotos.map((s, i) => ({
       src: s,
       caption: `Ảnh ${i + 1}/${state.allPhotos.length}`,
     }));
-
-    // ⭐ Wrap ZoomModal để thêm nút chọn
     window.ZoomModal.open(items, startIdx);
 
-    // Inject nút "Chọn ảnh này" vào zoom modal (chỉ 1 lần)
     setTimeout(() => {
       const zoomModal = document.getElementById('zoom-modal');
       if (!zoomModal) return;
-
       let actionBtn = zoomModal.querySelector('.zoom-action-btn');
       if (!actionBtn) {
         actionBtn = document.createElement('button');
@@ -1067,7 +1126,6 @@
           e.stopPropagation();
           const imgEl = document.getElementById('zoom-img');
           if (!imgEl) return;
-          // Tìm index từ src
           const idx = state.allPhotos.findIndex((s) => s === imgEl.src);
           if (idx !== -1) {
             togglePick(idx);
@@ -1076,7 +1134,6 @@
         });
       }
 
-      // Update trạng thái nút mỗi khi đổi ảnh
       function updateZoomActionBtn() {
         const imgEl = document.getElementById('zoom-img');
         const btn = zoomModal.querySelector('.zoom-action-btn');
@@ -1091,7 +1148,6 @@
       }
       updateZoomActionBtn();
 
-      // Hook vào nút prev/next để update
       const prev = zoomModal.querySelector('.zoom-prev');
       const next = zoomModal.querySelector('.zoom-next');
       prev?.addEventListener('click', () => setTimeout(updateZoomActionBtn, 50));
@@ -1123,9 +1179,9 @@
   }
 
   // ============================================
-  // HASHTAG + SHAPE CONFIG
+  // HASHTAG CONFIG
   // ============================================
-    function getHashtagConfig() {
+  function getHashtagConfig() {
     const f = state.selectedFrame || {};
     const d = state.tuneOverride || {};
     return {
@@ -1134,11 +1190,11 @@
       size: d.size != null ? d.size : (f.hashtag_size || 32),
       color: d.color != null ? d.color : (f.hashtag_color || '#38bdf8'),
       rotation: d.rotation != null ? d.rotation : (f.hashtag_rotation || 0),
-      style: d.style != null ? d.style : (f.hashtag_style || 'default'),   // ⭐ MỚI
+      style: d.style != null ? d.style : (f.hashtag_style || 'default'),
     };
   }
 
-    function setHashtagContext() {
+  function setHashtagContext() {
     const c = getHashtagConfig();
     window.__currentHashtags = state.selectedTags.slice();
     window.__hashtagX = c.x;
@@ -1146,10 +1202,9 @@
     window.__hashtagSize = c.size;
     window.__hashtagColor = c.color;
     window.__hashtagRotation = c.rotation;
-    window.__hashtagStyle = c.style;      // ⭐ MỚI
+    window.__hashtagStyle = c.style;
   }
 
-  // ⭐ Cập nhật: thêm frameRemoveBg
   function getShapeOptions() {
     const f = state.selectedFrame || {};
     return {
@@ -1158,9 +1213,7 @@
       shapeScale: f.shape_scale != null ? f.shape_scale : 100,
       textOverlayUrl: f.text_overlay_url || '',
       textRemoveBg: f.text_remove_bg !== 0,
-      // ⭐ Nếu frame_remove_bg = 1 → camera tràn viền + frame đè lên
       frameRemoveBg: f.frame_remove_bg === 1,
-      // Tràn viền khi: không có frame thực HOẶC frame_remove_bg
       fullBleed: (!f.image_url || f.image_url === '' || f.image_url.length < 100)
                  || f.frame_remove_bg === 1,
     };
@@ -1182,9 +1235,7 @@
   }
 
   async function renderPreviewInDecorate() {
-    if (isIpadMode) {
-      return;
-    }
+    if (isIpadMode) return;
 
     const wrap = $('#combined-preview-wrap');
     wrap.classList.remove('has-overlay');
@@ -1239,9 +1290,7 @@
     attachDragHandlers(layer);
   }
 
-  // ⭐ Dùng offsetWidth thay vì getBoundingClientRect
-  // (vì body đã bị transform scale → rect trả về kích thước đã scale)
-    function updateHashtagDisplay() {
+  function updateHashtagDisplay() {
     const layer = document.getElementById('hashtag-drag-layer');
     const span = document.getElementById('hashtag-text-el');
     const img = document.getElementById('combined-preview-img');
@@ -1256,7 +1305,6 @@
     span.textContent = text;
     span.style.display = '';
 
-    // ⭐ Dùng offsetWidth — không bị ảnh hưởng bởi transform scale của body
     const displayW = img.offsetWidth || layer.offsetWidth;
     if (displayW === 0) return;
     const naturalW = img.naturalWidth || displayW;
@@ -1269,7 +1317,7 @@
     span.style.top = (cfg.y * 100) + '%';
     span.style.transform = `translate(-50%, -50%) rotate(${cfg.rotation}deg)`;
 
-    // ⭐ Áp style class tương ứng
+    // ⭐ Style class
     span.classList.remove(
       'style-default', 'style-outline', 'style-shadow',
       'style-glow', 'style-neon', 'style-gradient'
@@ -1277,17 +1325,16 @@
     span.classList.add('style-' + (cfg.style || 'default'));
   }
 
-    function attachDragHandlers(layer) {
+  // ⭐ Attach drag + 2-finger pinch/rotate
+  function attachDragHandlers(layer) {
     if (layer._dragBound) return;
     layer._dragBound = true;
 
-    let mode = null; // 'drag' | 'pinch' | null
+    let mode = null;
     const pinch = { startDist: 0, startAngle: 0, startSize: 0, startRotation: 0 };
 
-    const getDist = (t1, t2) =>
-      Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-    const getAngle = (t1, t2) =>
-      Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * 180 / Math.PI;
+    const getDist = (t1, t2) => Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    const getAngle = (t1, t2) => Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * 180 / Math.PI;
 
     const moveTo = (e) => {
       const rect = layer.getBoundingClientRect();
@@ -1314,7 +1361,6 @@
         return;
       }
 
-      // ⭐ 2 ngón → PINCH/ROTATE
       if (e.touches && e.touches.length === 2) {
         e.preventDefault();
         mode = 'pinch';
@@ -1330,7 +1376,6 @@
         return;
       }
 
-      // ⭐ 1 ngón → DRAG
       if (e.touches && e.touches.length === 1) {
         e.preventDefault();
         mode = 'drag';
@@ -1342,7 +1387,6 @@
         return;
       }
 
-      // ⭐ Mouse (destop)
       if (e.type === 'mousedown') {
         e.preventDefault();
         mode = 'drag';
@@ -1354,20 +1398,16 @@
     };
 
     const onMove = (e) => {
-      // ⭐ PINCH 2 ngón
       if (mode === 'pinch' && e.touches && e.touches.length === 2) {
         e.preventDefault();
         const dist = getDist(e.touches[0], e.touches[1]);
         const angle = getAngle(e.touches[0], e.touches[1]);
-
         const scaleFactor = dist / Math.max(1, pinch.startDist);
         const newSize = Math.max(12, Math.min(220, Math.round(pinch.startSize * scaleFactor)));
-
         let deltaAngle = angle - pinch.startAngle;
         while (deltaAngle > 180) deltaAngle -= 360;
         while (deltaAngle < -180) deltaAngle += 360;
         const newRotation = Math.round(pinch.startRotation + deltaAngle);
-
         state.tuneOverride = {
           ...(state.tuneOverride || {}),
           size: newSize,
@@ -1376,8 +1416,6 @@
         updateHashtagDisplay();
         return;
       }
-
-      // ⭐ DRAG 1 ngón
       if (mode === 'drag') {
         if (e.cancelable) e.preventDefault();
         moveTo(e);
@@ -1385,16 +1423,13 @@
     };
 
     const onEnd = (e) => {
-      // Nếu còn 1 ngón trên màn hình (chuyển từ pinch 2 → 1) → bỏ qua
       if (e && e.touches && e.touches.length > 0) {
         if (mode === 'pinch' && e.touches.length === 1) {
-          // chuyển sang drag với ngón còn lại — reset điểm neo
           mode = 'drag';
           moveTo(e);
         }
         return;
       }
-
       if (!mode) return;
       mode = null;
       layer.classList.remove('dragging');
@@ -1404,6 +1439,8 @@
       document.removeEventListener('touchend', onEnd);
       document.removeEventListener('touchcancel', onEnd);
       syncTunePanelUI();
+      // ⭐ Lưu vị trí
+      saveHashtagPos();
     };
 
     layer.addEventListener('mousedown', onStart);
@@ -1439,15 +1476,12 @@
     document.querySelectorAll('.color-btn').forEach((b) => {
       b.classList.toggle('active', b.dataset.color.toLowerCase() === cfg.color.toLowerCase());
     });
-        const customColor = document.getElementById('tune-color-custom');
+    const customColor = document.getElementById('tune-color-custom');
     if (customColor) customColor.value = cfg.color;
-
-    // ⭐ Sync active style button
     document.querySelectorAll('.style-btn').forEach((b) => {
       b.classList.toggle('active', b.dataset.style === (cfg.style || 'default'));
     });
   }
-  
 
   document.querySelectorAll('.pos-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1456,6 +1490,7 @@
       state.combinedPreview = null;
       syncTunePanelUI();
       schedulePreviewRender();
+      saveHashtagPos();
     });
   });
 
@@ -1467,6 +1502,7 @@
       state.tuneOverride = { ...(state.tuneOverride || {}), size };
       state.combinedPreview = null;
       schedulePreviewRender();
+      saveHashtagPos();
     });
   }
 
@@ -1478,6 +1514,7 @@
       state.tuneOverride = { ...(state.tuneOverride || {}), rotation };
       state.combinedPreview = null;
       schedulePreviewRender();
+      saveHashtagPos();
     });
   }
 
@@ -1487,6 +1524,7 @@
       state.combinedPreview = null;
       syncTunePanelUI();
       schedulePreviewRender();
+      saveHashtagPos();
     });
   });
 
@@ -1497,10 +1535,10 @@
       state.combinedPreview = null;
       syncTunePanelUI();
       schedulePreviewRender();
+      saveHashtagPos();
     });
   }
 
-    // ⭐ STYLE BUTTONS — chọn phong cách hashtag
   document.querySelectorAll('.style-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const style = btn.dataset.style;
@@ -1509,10 +1547,10 @@
       document.querySelectorAll('.style-btn').forEach((b) => {
         b.classList.toggle('active', b.dataset.style === style);
       });
-      // Cập nhật preview ngay
       const layer = document.getElementById('hashtag-drag-layer');
       if (layer) updateHashtagDisplay();
       schedulePreviewRender();
+      saveHashtagPos();
     });
   });
 
@@ -1521,6 +1559,8 @@
     resetBtn.addEventListener('click', () => {
       state.tuneOverride = null;
       state.combinedPreview = null;
+      // ⭐ Xóa vị trí đã lưu
+      if (state.selectedFrame) clearHashtagPos(state.selectedFrame.id);
       syncTunePanelUI();
       schedulePreviewRender();
       toast('Đã về mặc định', 'info');
@@ -1528,7 +1568,7 @@
   }
 
   // ============================================
-  // FLOW BUTTONS — iPad sends commands, Host acts
+  // FLOW BUTTONS
   // ============================================
   $('#btn-continue').addEventListener('click', async () => {
     if (isIpadMode) {
@@ -1552,56 +1592,11 @@
     broadcastFullState();
   });
 
-    // ⭐ HUD BAR — Update tiến độ ngang cho iPad
-  function updateHUD() {
-    const stepEl = document.getElementById('hud-step');
-    const progEl = document.getElementById('hud-progress');
-    const frameEl = document.getElementById('hud-frame');
-    const statusEl = document.getElementById('hud-status');
-    if (!stepEl) return;
-
-    // Step hiện tại
-    let stepName = 'Chọn khung';
-    if (steps.capture.classList.contains('active')) stepName = 'Chụp ảnh';
-    else if (steps.pick.classList.contains('active')) stepName = 'Chọn ảnh';
-    else if (steps.decorate.classList.contains('active')) stepName = 'Xem trước';
-    else if (steps.result.classList.contains('active')) stepName = 'Hoàn tất';
-    stepEl.textContent = stepName;
-
-    // Progress
-    let prog = '—';
-    if (steps.capture.classList.contains('active')) {
-      const total = state.selectedFrame?.capture_count || 3;
-      prog = `${state.allPhotos.length} / ${total}`;
-    } else if (steps.pick.classList.contains('active')) {
-      const need = state.selectedFrame?.photo_count || 1;
-      prog = `${state.pickedIndices.length} / ${need}`;
-    } else if (steps.select.classList.contains('active')) {
-      prog = state.selectedFrame ? '1 / 1' : '0 / 1';
-    } else if (steps.decorate.classList.contains('active')) {
-      prog = '✓ Chọn đủ';
-    } else if (steps.result.classList.contains('active')) {
-      prog = '✓ Xong';
-    }
-    progEl.textContent = prog;
-
-    // Frame name
-    frameEl.textContent = state.selectedFrame?.name || '—';
-
-    // Kết nối
-    if (isIpadMode) {
-      statusEl.textContent = _rtConnected ? '📱 iPad' : '⏳...';
-    } else {
-      statusEl.textContent = _rtConnected ? '💻 Đã nối' : '💻 Laptop';
-    }
-  }
-
   $('#btn-capture').addEventListener('click', async () => {
     if (isIpadMode) {
       RealtimeSync.sendCommand({ action: 'capture' });
       return;
     }
-
     const btn = $('#btn-capture');
     btn.disabled = true;
     btn.textContent = 'Đang chụp...';
@@ -1642,10 +1637,7 @@
     btn.innerHTML = `<span>Chụp ${count} tấm</span><span class="btn-icon">📸</span>`;
 
     const needPick = state.selectedFrame.photo_count || 1;
-    const thumbs = [];
-    for (let i = 0; i < shots.length; i++) {
-      thumbs.push(await makeThumbnail(shots[i], 220, 0.5));
-    }
+    const thumbs = await Promise.all(shots.map((s) => makeThumbnail(s, 180, 0.55)));
 
     RealtimeSync.sendState({
       step: 'pick',
@@ -1692,7 +1684,14 @@
       toast(`Cần chọn đủ ${need} tấm`, 'error');
       return;
     }
-    state.tuneOverride = null;
+
+    // ⭐ Load vị trí đã lưu cho frame này (nếu có)
+    const _saved = loadHashtagPos();
+    if (_saved && !state.tuneOverride) {
+      state.tuneOverride = _saved;
+      console.log('[Hashtag] Đã khôi phục vị trí:', _saved);
+    }
+
     showStep('decorate');
     $('#photos-preview').innerHTML = state.photos
       .map((s, i) => `<img src="${s}" data-shot-index="${i}" />`).join('');
@@ -1713,7 +1712,11 @@
     }
     if (camera) camera.stop();
     showStep('capture');
-    camera = new window.CameraManager($('#video'), $('#countdown'));
+    camera = new window.CameraManager(
+      $('#video'),
+      $('#countdown'),
+      _remoteIpadStream && _remoteIpadStream.active ? _remoteIpadStream : null
+    );
     await camera.start();
     broadcastFullState();
   });
@@ -1729,7 +1732,7 @@
   });
 
   // ============================================
-  // INFO MODAL — Nhập thông tin trước khi tạo QR
+  // INFO MODAL
   // ============================================
   const infoModal = document.getElementById('info-modal');
   const btnInfoCancel = document.getElementById('info-modal-cancel');
@@ -1743,11 +1746,39 @@
     const status = document.getElementById('info-modal-status');
     if (status) { status.textContent = ''; status.className = 'info-save-status'; }
     infoModal.classList.add('active');
-    setTimeout(() => document.getElementById('modal-mssv')?.focus(), 300);
+    document.body.classList.add('info-modal-open');
+    setTimeout(() => {
+      const mssvEl = document.getElementById('modal-mssv');
+      if (mssvEl) {
+        mssvEl.focus();
+        scrollInputIntoView(mssvEl);
+      }
+    }, 350);
   }
 
   function closeInfoModal() {
     infoModal.classList.remove('active');
+    document.body.classList.remove('info-modal-open');
+    document.activeElement?.blur();
+  }
+
+  function scrollInputIntoView(inputEl) {
+    if (!inputEl) return;
+    const vv = window.visualViewport;
+    if (!vv) {
+      inputEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    setTimeout(() => {
+      const rect = inputEl.getBoundingClientRect();
+      const viewportH = vv.height;
+      const viewportTop = vv.offsetTop;
+      if (rect.bottom > viewportTop + viewportH - 100) {
+        const scrollAmount = rect.bottom - (viewportTop + viewportH - 100);
+        const modal = document.querySelector('.info-modal-content');
+        if (modal) modal.scrollTop += scrollAmount + 60;
+      }
+    }, 300);
   }
 
   if (infoModal) {
@@ -1756,8 +1787,40 @@
 
     ['modal-mssv', 'modal-name', 'modal-birthyear'].forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.addEventListener('keypress', (e) => { if (e.key === 'Enter') btnInfoSubmit.click(); });
+      if (!el) return;
+      el.addEventListener('focus', () => scrollInputIntoView(el));
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const order = ['modal-mssv', 'modal-name', 'modal-birthyear'];
+          const curIdx = order.indexOf(id);
+          if (curIdx < order.length - 1) {
+            document.getElementById(order[curIdx + 1])?.focus();
+          } else {
+            btnInfoSubmit?.click();
+          }
+        }
+      });
     });
+
+    // ⭐ Keyboard handling cho iPad
+    if (window.visualViewport) {
+      let _lastViewportH = window.visualViewport.height;
+      const handleViewportResize = () => {
+        const vv = window.visualViewport;
+        const keyboardOpen = vv.height < _lastViewportH - 100;
+        _lastViewportH = vv.height;
+        document.body.classList.toggle('keyboard-open', keyboardOpen);
+        if (infoModal.classList.contains('active') && keyboardOpen) {
+          const active = document.activeElement;
+          if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+            scrollInputIntoView(active);
+          }
+        }
+      };
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      window.visualViewport.addEventListener('scroll', handleViewportResize);
+    }
 
     btnInfoSubmit.addEventListener('click', async () => {
       const mssv = document.getElementById('modal-mssv').value.trim();
@@ -1863,7 +1926,6 @@
       });
 
       showStep('result');
-      updateHUD();
       toast('Tạo ảnh thành công!', 'success');
 
       if (_pendingInfo) {
@@ -1911,11 +1973,17 @@
     }
   }
 
+  // ============================================
+  // RESTART
+  // ============================================
   $('#btn-restart').addEventListener('click', () => {
     if (isIpadMode) {
       RealtimeSync.sendCommand({ action: 'restart' });
       return;
     }
+    // ⭐ Xóa vị trí hashtag đã lưu của frame hiện tại
+    if (state.selectedFrame) clearHashtagPos(state.selectedFrame.id);
+
     state.selectedFrame = null;
     state.selectedTags = [];
     state.allPhotos = [];
@@ -1923,10 +1991,11 @@
     state.photos = [];
     state.combinedPreview = null;
     state.tuneOverride = null;
-     // ⭐ Reset reverse stream nếu có
+
     if (_remoteIpadStream && _remoteIpadStream !== previewStream) {
       _remoteIpadStream = null;
     }
+
     document.querySelectorAll('.frame-item').forEach((x) => x.classList.remove('selected'));
     document.querySelectorAll('#hashtag-list .hashtag').forEach((x) => x.classList.remove('selected'));
     $('#btn-continue').disabled = true;
@@ -1934,6 +2003,7 @@
     $('#photos-preview').innerHTML = '';
     $('#pick-grid').innerHTML = '';
     $('#combined-preview-wrap').innerHTML = '';
+
     ['result-mssv', 'result-name', 'result-hometown', 'result-birthyear'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) { el.value = ''; el.disabled = false; el.classList.remove('error'); }
@@ -1945,16 +2015,17 @@
     }
     const _statusEl = document.getElementById('info-save-status');
     if (_statusEl) { _statusEl.textContent = ''; _statusEl.className = 'info-save-status'; }
+
     updateSelectedFrameInfo();
     updatePreviewOverlay();
     showStep('select');
     setTimeout(() => startPreviewCamera(), 300);
     broadcastFullState();
-   updateHUD();
+    updateHUD();
   });
 
   // ============================================
-  // INFO FORM (chỉ iPad hoặc cả 2)
+  // INFO FORM (bước 5)
   // ============================================
   function bindInfoForm() {
     const btnSave = document.getElementById('btn-save-info');
@@ -2057,19 +2128,16 @@
         modal.classList.add('active');
       });
 
-            function closePairModal() {
+      function closePairModal() {
         modal.classList.remove('active');
-        // ⭐ Gửi lệnh restart cho iPad (nếu đã kết nối)
         if (_rtConnected) {
           RealtimeSync.sendCommand({ action: 'restart' });
         }
-        // ⭐ Reset về trang đầu (step select)
         setTimeout(() => {
           const restartBtn = document.getElementById('btn-restart');
           if (restartBtn && !steps.select.classList.contains('active')) {
             restartBtn.click();
           } else {
-            // đang ở step select rồi → chỉ reset UI
             showStep('select');
             if (!previewStream) startPreviewCamera();
           }
@@ -2092,7 +2160,7 @@
     const btnPair = document.getElementById('btn-show-ipad-pair');
     if (btnPair) btnPair.style.display = 'none';
 
-        const camToggleText = document.getElementById('cam-toggle-text');
+    const camToggleText = document.getElementById('cam-toggle-text');
     if (camToggleText) camToggleText.textContent = 'Bật camera iPad';
 
     RealtimeSync.on('onConnect', () => {
@@ -2100,28 +2168,7 @@
       _rtConnected = true;
       RealtimeSync.sendPair({ role: 'ipad', joinedAt: Date.now() });
       toast('Đã kết nối với laptop!', 'success');
-setTimeout(() => startPreviewCamera(), 600);
-      // if (!_webrtcReceiverStarted) {
-      //   _webrtcReceiverStarted = true;
-      //   setTimeout(() => {
-      //     const videoEl = document.getElementById('preview-video');
-      //     if (videoEl) {
-      //       WebRTCStream.initReceiver(videoEl, _rtRoomId).then((ok) => {
-      //         if (ok) {
-      //           RealtimeSync.sendCommand({ action: 'request-state' });
-      //         } else {
-      //           _webrtcReceiverStarted = false;
-      //           setTimeout(() => {
-      //             if (!WebRTCStream.isReady()) {
-      //               WebRTCStream.initReceiver(videoEl, _rtRoomId);
-      //               _webrtcReceiverStarted = true;
-      //             }
-      //           }, 3000);
-      //         }
-      //       });
-      //     }
-      //   }, 500);
-      // }
+      setTimeout(() => startPreviewCamera(), 600);
 
       if (_rtHeartbeatTimer) clearInterval(_rtHeartbeatTimer);
       _rtHeartbeatTimer = setInterval(() => {
@@ -2185,9 +2232,6 @@ setTimeout(() => startPreviewCamera(), 600);
     if (payload.allPhotos && Array.isArray(payload.allPhotos) && payload.allPhotos.length > 0) {
       state.allPhotos = payload.allPhotos;
       state.pickedIndices = [];
-      if (payload.needPick && state.selectedFrame) {
-        // Cập nhật needPick từ remote
-      }
       renderPickGrid();
     }
 
@@ -2206,7 +2250,8 @@ setTimeout(() => startPreviewCamera(), 600);
       state._lastCombinedUrl = payload.finalPhotoUrl;
       state._lastQrUrl = qr;
     }
-  updateHUD();
+
+    updateHUD();
   }
 
   // ⭐ Laptop — Host mode
@@ -2238,6 +2283,7 @@ setTimeout(() => startPreviewCamera(), 600);
         broadcastFullState();
         setTimeout(broadcastFullState, 500);
         setTimeout(broadcastFullState, 1500);
+        updateHUD();
       }
     });
 
@@ -2245,11 +2291,19 @@ setTimeout(() => startPreviewCamera(), 600);
 
     if (_rtHeartbeatTimer) clearInterval(_rtHeartbeatTimer);
     _rtHeartbeatTimer = setInterval(() => {
-      if (_rtConnected) broadcastFullState();
-    }, 2000);
+      if (!_rtConnected) return;
+      const fingerprint = [
+        state.selectedFrame?.id || '',
+        state.selectedTags.join(','),
+        state.pickedIndices.join(','),
+      ].join('|');
+      if (fingerprint !== _lastStateFingerprint) {
+        _lastStateFingerprint = fingerprint;
+        broadcastFullState();
+      }
+      updateHUD();
+    }, 4000);
   }
-
-
 
   function startWebRTCSender() {
     if (_webrtcSenderStarted) return;
@@ -2279,33 +2333,32 @@ setTimeout(() => startPreviewCamera(), 600);
     });
   }
 
-    // ⭐ Nhận stream cam từ iPad
+  // ⭐ Nhận stream cam từ iPad (reverse)
   function startReverseReceiver() {
     if (!_rtRoomId) return;
     console.log('[Laptop] Khởi động reverse receiver...');
 
-    // Đăng ký callback khi nhận được stream
     WebRTCStream.onTrack('reverse', (stream) => {
       _remoteIpadStream = stream;
       console.log('[Laptop] ✅ Nhận stream từ iPad');
 
-      // Nếu đang ở step select → thay video preview luôn
       if (steps.select.classList.contains('active')) {
         const pv = $('#preview-video');
         if (pv) {
-          // Ngắt cam local
           if (previewStream && previewStream !== stream) {
-            previewStream.getTracks().forEach((t) => t.stop());
+            try { previewStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
           }
           previewStream = stream;
           pv.srcObject = stream;
+          pv.poster = '';
           pv.play().catch(() => {});
           $('#camera-status').classList.add('active');
-          $('#camera-status-text').textContent = 'Camera iPad (remote)';
+          $('#camera-status-text').textContent = '📱 Camera iPad (remote)';
+          $('#cam-toggle-icon').textContent = '📱';
+          $('#cam-toggle-text').textContent = 'Camera iPad';
         }
       }
 
-      // Nếu đang ở step capture → thay video
       if (steps.capture.classList.contains('active') && camera) {
         const v = $('#video');
         if (v) {
@@ -2315,9 +2368,10 @@ setTimeout(() => startPreviewCamera(), 600);
           camera.stream = stream;
         }
       }
+
+      console.log('[Laptop] Đã lưu stream iPad, sẵn sàng dùng');
     });
 
-    // Tạo video element ẩn để nhận stream (nếu cần)
     let hiddenVideo = document.getElementById('_hidden_ipad_video');
     if (!hiddenVideo) {
       hiddenVideo = document.createElement('video');
@@ -2426,6 +2480,13 @@ setTimeout(() => startPreviewCamera(), 600);
     else if (steps.decorate.classList.contains('active')) currentStep = 'decorate';
     else if (steps.result.classList.contains('active')) currentStep = 'result';
 
+    _lastStateFingerprint = [
+      state.selectedFrame?.id || '',
+      state.selectedTags.join(','),
+      state.pickedIndices.join(','),
+      currentStep,
+    ].join('|');
+
     RealtimeSync.sendState({
       step: currentStep,
       selectedFrameId: state.selectedFrame?.id || null,
@@ -2440,7 +2501,6 @@ setTimeout(() => startPreviewCamera(), 600);
   // ⭐ INIT
   // ============================================
   window.addEventListener('load', () => {
-    // ⭐ KHUNG TỈ LỆ CỐ ĐỊNH 16:9 — chỉ host mode (laptop)
     const vpCfg = cfg.VIEWPORT || {};
     if (
       window.ViewportScaler &&
@@ -2466,8 +2526,12 @@ setTimeout(() => startPreviewCamera(), 600);
     initRealtimeSync();
   });
 
-  loadFrames();
-  loadHashtags();
-  updateSelectedFrameInfo();
-  updatePreviewOverlay();
+  // ⭐ Load song song
+  Promise.all([loadFrames(), loadHashtags()]).then(() => {
+    updateSelectedFrameInfo();
+    updatePreviewOverlay();
+    updateHUD();
+  }).catch((err) => {
+    console.error('[Init] Lỗi load:', err);
+  });
 })();

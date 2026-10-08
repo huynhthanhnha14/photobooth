@@ -1,0 +1,39 @@
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS layout TEXT DEFAULT 'auto';
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS photo_count INT DEFAULT 8;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS capture_count INT DEFAULT 12;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS hashtag_x FLOAT DEFAULT 0.5;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS hashtag_y FLOAT DEFAULT 0.92;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS hashtag_size INT DEFAULT 32;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS hashtag_color TEXT DEFAULT '#fbbf24';
+
+CREATE TABLE IF NOT EXISTS frames (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  image_url TEXT NOT NULL,
+  layout TEXT DEFAULT 'auto',
+  photo_count INT DEFAULT 8,
+  capture_count INT DEFAULT 12,
+  hashtag_x FLOAT DEFAULT 0.5,
+  hashtag_y FLOAT DEFAULT 0.92,
+  hashtag_size INT DEFAULT 32,
+  hashtag_color TEXT DEFAULT '#fbbf24',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS hashtags (
+  id SERIAL PRIMARY KEY,
+  tag TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS photos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  combined_url TEXT,
+  individual_urls TEXT[],
+  hashtags TEXT[],
+  frame_id UUID REFERENCES frames(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS shape_type TEXT DEFAULT 'rect';
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS shape_value TEXT DEFAULT '';
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS shape_scale INT DEFAULT 100;
