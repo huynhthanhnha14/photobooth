@@ -13,5 +13,5 @@ window.APP_CONFIG = {
   STORAGE_BUCKET_INDIVIDUAL: 'photos-individual', // Ảnh gốc từng tấm
 
   // Số giây đếm ngược mỗi tấm
-  COUNTDOWN_SECONDS: 5,
+  COUNTDOWN_SECONDS: 3,
 };
